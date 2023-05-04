@@ -371,6 +371,7 @@ public class Driver {
                 "" + ParallelAwareTilingPass.DEFAULT_CACHE_SIZE,
                 "N",
                 "To define cache size");
+        options.add(options.ANALYSIS, "DataMining-analysis", "Gather information");
 
         options.add(options.TRANSFORM, ParallelAwareTilingPass.NTH_ORDER_PARAM, null,
                 "" + ParallelAwareTilingPass.DEFAULT_NTH_ORDER, "N", "To define the level of tiling");
@@ -806,7 +807,12 @@ public class Driver {
 
         PrintTools.printlnStatus("[Driver] print all options :\n" + options.dumpOptions(), 4);
         System.out.println(program);
+        
+        if (getOptionValue("DataMining-analysis") != null) {
+			DataMining programm = new DataMining(program);
+			AnalysisPass.run(programm);
 
+		}
         if (getOptionValue("teliminate-branch") != null && !getOptionValue("teliminate-branch").equals("0")) {
             TransformPass.run(new BranchEliminator(program));
         }
@@ -877,6 +883,8 @@ public class Driver {
         if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
             TransformPass.run(new ParallelAwareTilingPass(program, options));
         }
+
+        
 
     }
 
