@@ -9,6 +9,6 @@
     },
     "java.project.referencedLibraries": [
         "lib/**/*.jar",
-        "c:\\Users\\josee\\.ivy2\\cache\\org.apache.solr\\**\\*.jar"
+        "C:/Users/josee/.ivy2/**/*.jar",
     ]
 }

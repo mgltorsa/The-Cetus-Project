@@ -8,5 +8,6 @@
     </info>
     <dependencies>
         <dependency org="org.apache.solr" name="solr-solrj" rev="9.2.0" />
+        <dependency org="org.eclipse.jetty" name="jetty-client" rev="9.3.9.M1" />
     </dependencies>
 </ivy-module>

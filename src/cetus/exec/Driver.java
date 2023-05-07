@@ -1,6 +1,7 @@
 package cetus.exec;
 
 import cetus.analysis.*;
+import cetus.analysis.indexing.SolrIndexer;
 import cetus.codegen.CodeGenPass;
 import cetus.codegen.ompGen;
 import cetus.gui.CetusGUI;
@@ -840,6 +841,8 @@ public class Driver {
         if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
             AnalysisPass.run(new DDTDriver(program));
         }
+
+        AnalysisPass.run(new SolrIndexer(program));
 
         if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
             AnalysisPass.run(new ArrayPrivatization(program));
