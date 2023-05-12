@@ -6,8 +6,8 @@
             "name": "Launch Driver",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "./resources/examples/tiling/MatrixVectorMultiplication/NonTiled.c"
-        },
+            "args": "C:/opt/NPB3.3-SER-C/CG/cg.c"
+        },  
         {
             "type": "java",
             "name": "Launch Current File",

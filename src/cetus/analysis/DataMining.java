@@ -1,86 +1,62 @@
 package cetus.analysis;
 
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.DecimalFormat;
-import java.text.ParseException;
+
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
-import java.util.TreeMap;
+
 import java.util.logging.FileHandler;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import org.hamcrest.core.IsInstanceOf;
-import cetus.codegen.ProfitableOMP;
+
 import cetus.entities.DataRaw;
-import cetus.exec.Driver;
 import cetus.hir.AccessExpression;
-import cetus.hir.AccessSymbol;
 import cetus.hir.ArrayAccess;
-import cetus.hir.ArraySpecifier;
 import cetus.hir.AssignmentExpression;
-import cetus.hir.AssignmentOperator;
 import cetus.hir.BinaryExpression;
-import cetus.hir.BinaryOperator;
 import cetus.hir.BooleanLiteral;
-import cetus.hir.BreakStatement;
+import cetus.hir.Case;
 import cetus.hir.CetusAnnotation;
 import cetus.hir.CharLiteral;
 import cetus.hir.CommaExpression;
 import cetus.hir.CommentAnnotation;
-import cetus.hir.CompoundLiteral;
 import cetus.hir.CompoundStatement;
 import cetus.hir.ConditionalExpression;
 import cetus.hir.ConstructorInitializer;
 import cetus.hir.ContinueStatement;
-import cetus.hir.DFIterator;
-import cetus.hir.DataFlowTools;
+
 import cetus.hir.Declaration;
 import cetus.hir.DeclarationStatement;
-import cetus.hir.Declarator;
 import cetus.hir.DoLoop;
+import cetus.hir.ExceptionHandler;
 import cetus.hir.Expression;
 import cetus.hir.ExpressionStatement;
-import cetus.hir.ForLoop;
 import cetus.hir.FunctionCall;
 import cetus.hir.GotoStatement;
-import cetus.hir.IRTools;
 import cetus.hir.IfStatement;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
-import cetus.hir.PointerSpecifier;
-import cetus.hir.PrintTools;
+import cetus.hir.OmpAnnotation;
+import cetus.hir.PragmaAnnotation;
 import cetus.hir.Procedure;
+import cetus.hir.ProcedureDeclarator;
 import cetus.hir.Program;
-import cetus.hir.RangeExpression;
 import cetus.hir.ReturnStatement;
-import cetus.hir.SimpleExpression;
-import cetus.hir.StandardLibrary;
+
 import cetus.hir.Statement;
 import cetus.hir.StatementExpression;
 import cetus.hir.StringLiteral;
 import cetus.hir.SwitchStatement;
 import cetus.hir.Symbol;
-import cetus.hir.SymbolTable;
-import cetus.hir.SymbolTools;
-import cetus.hir.Symbolic;
-import cetus.hir.Tools;
+
 import cetus.hir.TranslationUnit;
 import cetus.hir.Traversable;
 import cetus.hir.UnaryExpression;
-import cetus.hir.UnaryOperator;
-import cetus.hir.UserSpecifier;
 import cetus.hir.VariableDeclaration;
 import cetus.hir.VariableDeclarator;
 import cetus.hir.WhileLoop;
@@ -134,11 +110,7 @@ public class DataMining extends AnalysisPass {
 
 	/* private ArrayList<AnalysisLoopTarget> loops_Features; */
 
-	private ArrayList<Loop> all_loops = new ArrayList<Loop>();
-
 	private List<DataRaw> listDataMining;
-
-	private FileWriter Otherwriter;
 
 	private int elementId;
 	// Pass name
@@ -169,7 +141,8 @@ public class DataMining extends AnalysisPass {
 
 	@Override
 	public void start() {
-		analysisProgram(program);
+		DataRaw originDatRaw = getDataRaw(program, null, tryGetFilename(program, null));
+		analysisProgram(originDatRaw, null);
 	}
 	/*
 	 * public void startAnalysis(Program program, String fileName) {
@@ -184,46 +157,99 @@ public class DataMining extends AnalysisPass {
 
 	}
 
-	public void analysisProgram(Traversable program) {
+	public String tryGetFilename(Traversable traversable, String defaultFilename) {
+		String filename = defaultFilename;
 
-		List<Traversable> children = program.getChildren();
-		if (children != null && children.size() != 0) {
-
-			for (int index = 0; index < children.size(); index++) {
-				Traversable t = children.get(index);
-
-				analysisProgram(t);
-			}
-
+		if (traversable instanceof TranslationUnit) {
+			filename = ((TranslationUnit) traversable).getInputFilename();
 		}
 
-		String filename = null;
-		if (program instanceof TranslationUnit) {
-			filename = ((TranslationUnit) program).getInputFilename();
-		}
-		List<Traversable> childrenElement = program.getChildren();
+		return filename;
+	}
+
+	public DataRaw getDataRaw(Traversable traversable, DataRaw parent, String originFilename) {
+
+		String filename = tryGetFilename(traversable, originFilename);
+
+		List<Traversable> childrenElement = traversable.getChildren();
 		elementId++;
-		String typeElement = InstanceDataType(program);
+		String typeElement = InstanceDataType(traversable);
 		String line_in_code = null;
 		String col_in_code = null;
 
-		int col = program.getColumn();
-		int row = program.getLine();
+		int col = traversable.getColumn();
+		int row = traversable.getLine();
 
-		if (col == 0 && row == 0) {
+		if (col != 0 && row != 0) {
 			line_in_code = row + "";
 			col_in_code = col + "";
 		}
 
-		if (program instanceof Statement) {
-			line_in_code = "" + ((Statement) program).where();
+		if (traversable instanceof Statement) {
+			Statement st = ((Statement) traversable);
+			if (st.where() != 0) {
+				line_in_code = "" + st.where();
+			}
 		}
 
-		DataRaw datainfo = new DataRaw(elementId, program.getParent(), program, typeElement, childrenElement);
+		DataRaw datainfo = new DataRaw(elementId, traversable, typeElement, childrenElement);
 		datainfo.setLineCode(line_in_code);
 		datainfo.setFilename(filename);
 		datainfo.setColumnCode(col_in_code);
-		listDataMining.add(datainfo);
+		datainfo.setParent(parent);
+		return datainfo;
+	}
+
+	public boolean isCodeBlock(DataRaw datainfo) {
+		Traversable value = datainfo.getValue();
+		// cetus.hir.Case
+		// cetus.hir.TranslationUnit
+		// cetus.hir.CommentAnnotation
+		// cetus.hir.CetusAnnotation
+		// cetus.hir.IfStatement
+		// cetus.hir.Procedure
+		// cetus.hir.GotoStatement
+		// cetus.hir.ExceptionHandler
+		// cetus.hir.OmpAnnotation
+		// cetus.hir.PragmaAnnotation
+		return value instanceof Loop
+				|| value instanceof CompoundStatement
+				|| value instanceof WhileLoop
+				|| value instanceof Case
+				|| value instanceof TranslationUnit
+				|| value instanceof CommentAnnotation
+				|| value instanceof CetusAnnotation
+				|| value instanceof IfStatement
+				|| value instanceof Procedure
+				|| value instanceof ProcedureDeclarator
+				|| value instanceof GotoStatement
+				|| value instanceof ExceptionHandler
+				|| value instanceof OmpAnnotation
+				|| value instanceof PragmaAnnotation;
+	}
+
+	public void analysisProgram(DataRaw dataRaw, String originFilename) {
+
+		if (!(dataRaw.getValue() instanceof TranslationUnit)) {
+			listDataMining.add(dataRaw);
+		}
+
+		List<Traversable> children = dataRaw.getValue().getChildren();
+
+		if (!isCodeBlock(dataRaw) && !(dataRaw.getValue() instanceof Program)) {
+			return;
+		}
+
+		if (children != null && children.size() != 0) {
+
+			for (int index = 0; index < children.size(); index++) {
+				Traversable t = children.get(index);
+				String childrenFilename = tryGetFilename(t, originFilename);
+				DataRaw childDataRaw = getDataRaw(t, dataRaw, childrenFilename);
+				analysisProgram(childDataRaw, childrenFilename);
+			}
+
+		}
 
 	}
 
