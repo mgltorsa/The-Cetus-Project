@@ -1,1 +1,111 @@
+algorithm, algorithms
+annotation, annotations
+argument, arguments, arg, args, parameter, parameters
 array, arrays, [, ]
+assignment, assignments, =
+boolean, bool, booleans
+break, breaks, {, }
+byte, bytes
+call, calls
+casting, cast, casts
+catch, catches
+char, character, characters
+class, classes
+collection, collections
+comment, comments, //
+constant, constants
+constructor, constructors
+continue, continues
+control, controls
+declaration, declarations
+default, defaults
+delete, deletes, deleted
+do, does
+double, doubles
+else, elseif
+encapsulation, encapsulate
+exception, exceptions
+extends, extend
+false, falsy
+final, finals
+finally, finalizer
+float, floats
+for, foreach
+function, functions, func
+generic, generics
+getter, getters
+if, else if
+implements, implement
+import, imports
+inheritance, inherit, inherited
+instance, instances
+int, integer, integers
+interface, interfaces
+iterator, iterators
+lambda, lambdas
+lib, libs
+link, links
+list, lists, struct
+long, longs
+loop, loops, for, iteration, repetition
+method, methods
+module, modules
+namespace, namespaces
+new, news
+null, nil
+object, objects
+operator, operators
+package, packages
+parameter, parameters, args, arg
+polymorphism, polymorphic
+private, privates
+protected, protects
+public, publics
+queue, queues
+recursion, recursive
+regex, regular expression, regular expressions
+return, returns, result
+set, sets
+short, shorts
+stack, stacks
+static, statics
+string, strings
+super, superclass
+switch, switches
+synchronized, sync
+syntax, syntaxes
+thread, threads
+throw, throws
+trait, traits
+try, tries
+true, truthy
+type, types
+variable, variables, var
+void, voids
+loop, iteration, repetition, while, whilst
+array index, array indices
+integer, integers
+float, floats
+number, numbers, int, float, 
+function calls, function call, ()
+string, strings
+operator, symbol, addition, add, +
+operator, symbol, subtraction, subtract, -
+operator, symbol, multiplication, multiply, *
+operator, symbol, division, divide, /
+modulo, mod
+increment, incrementing, incrementer
+decrement, decrementing, decrementer
+comparison, compare
+equal, equals, equality, =
+greater, greater than
+less, less than
+and, &&, logical and
+or, ||, logical or
+not, !, logical not
+xor, ^, logical xor
+pointer, reference, memory address, *
+struct, structs
+typedef, typedefs
+sizeof, size
+void, none, null
