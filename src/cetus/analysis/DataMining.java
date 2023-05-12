@@ -225,20 +225,23 @@ public class DataMining extends AnalysisPass {
 				|| value instanceof GotoStatement
 				|| value instanceof ExceptionHandler
 				|| value instanceof OmpAnnotation
-				|| value instanceof PragmaAnnotation;
+				|| value instanceof PragmaAnnotation
+				|| value instanceof FunctionCall
+				|| value instanceof VariableDeclaration
+				|| value instanceof cetus.hir.ArrayAccess
+				|| value instanceof cetus.hir.Label;
 	}
 
 	public void analysisProgram(DataRaw dataRaw, String originFilename) {
 
 		if (!(dataRaw.getValue() instanceof TranslationUnit)) {
-			listDataMining.add(dataRaw);
+
+			if (isCodeBlock(dataRaw)) {
+				listDataMining.add(dataRaw);
+			}
 		}
 
 		List<Traversable> children = dataRaw.getValue().getChildren();
-
-		if (!isCodeBlock(dataRaw) && !(dataRaw.getValue() instanceof Program)) {
-			return;
-		}
 
 		if (children != null && children.size() != 0) {
 

@@ -53,9 +53,15 @@ public class SolrIndexer extends AnalysisPass {
 
         logger.info("Starting Solr Indexer");
         List<SolrInputDocument> inDocuments = mapDataRawToDocuments(filterCodeBlocks(crawler.getDataMinning()));
+
         try {
             for (SolrInputDocument inDoc : inDocuments) {
-                solrClient.add(inDoc);
+                try {
+                    solrClient.add(inDoc);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    logger.severe(e.getMessage());
+                }
             }
 
             solrClient.commit();
@@ -73,7 +79,6 @@ public class SolrIndexer extends AnalysisPass {
                 logger.info("document: " + document.toString());
             });
             logger.info("Finish docs output");
-
         } catch (Exception e) {
             e.printStackTrace();
             logger.severe(e.getMessage());
@@ -83,11 +88,11 @@ public class SolrIndexer extends AnalysisPass {
 
     private boolean containsBlockType(DataRaw datainfo) {
         // WARNING: It is already done in data mining.java
-        return datainfo.getTypeValue().contains(DataMining.LOOP_TYPE)
-                || datainfo.getTypeValue().contains(DataMining.DO_LOOP_TYPE)
-                || datainfo.getTypeValue().contains(DataMining.COMPOUND_STATEMENT_TYPE)
-                || datainfo.getTypeValue().contains(DataMining.COMPUND_TYPE);
-        // return true;
+        // return datainfo.getTypeValue().contains(DataMining.LOOP_TYPE)
+        // || datainfo.getTypeValue().contains(DataMining.DO_LOOP_TYPE)
+        // || datainfo.getTypeValue().contains(DataMining.COMPOUND_STATEMENT_TYPE)
+        // || datainfo.getTypeValue().contains(DataMining.COMPUND_TYPE);
+        return true;
     }
 
     private List<DataRaw> filterCodeBlocks(List<DataRaw> dataMinning) {
@@ -119,12 +124,13 @@ public class SolrIndexer extends AnalysisPass {
 
         String parentId = dataRaw.getParent().getFilename();
         boolean hasLineCode = false;
-        if (!dataRaw.getParent().getLineCode().isBlank()) {
+        if (dataRaw.getParent().getLineCode() != null && !dataRaw.getParent().getLineCode().isBlank()) {
             parentId += "-" + dataRaw.getParent().getLineCode();
             hasLineCode = true;
         }
 
-        if (hasLineCode && !dataRaw.getParent().getColumnCode().isBlank()) {
+        if (hasLineCode && dataRaw.getParent().getColumnCode() != null
+                && !dataRaw.getParent().getColumnCode().isBlank()) {
             parentId += "-" + dataRaw.getParent().getColumnCode();
         }
 
