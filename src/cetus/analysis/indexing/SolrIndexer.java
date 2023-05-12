@@ -46,6 +46,7 @@ public class SolrIndexer extends AnalysisPass {
 
     @Override
     public void start() {
+
         setupClient();
 
         logger.info("Starting Solr Indexer");
@@ -98,6 +99,10 @@ public class SolrIndexer extends AnalysisPass {
 
         doc.addField("filename", loop.getCondition().toString());
         doc.addField("content", loop.toString());
+        doc.addField("constructs", doc);
+        doc.addField("linecode", doc);
+        doc.addField("datatypes", doc);
+
         return doc;
     }
 

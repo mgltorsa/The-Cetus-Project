@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Solr managed schema - automatically generated - DO NOT EDIT -->
+<schema name="c-code" version="1.6">
+  <uniqueKey>id</uniqueKey>
+  <fieldType name="booleans" class="solr.BoolField"/>
+  <fieldType name="long" class="solr.LongPointField"/>
+  <fieldType name="text_c" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.WhitespaceTokenizerFactory" rule="java"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+      <filter class="solr.EdgeNGramFilterFactory" maxGramSize="15" minGramSize="2"/>
+      <filter class="solr.RemoveDuplicatesTokenFilterFactory"/>
+      <filter class="solr.SynonymGraphFilterFactory" synonyms="synonymous.txt"/>
+      <filter class="solr.FlattenGraphFilterFactory"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.WhitespaceTokenizerFactory" rule="java"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+      <filter class="solr.EdgeNGramFilterFactory" maxGramSize="15" minGramSize="2"/>
+      <filter class="solr.SynonymGraphFilterFactory" synonyms="synonymous.txt"/>
+      <filter class="solr.FlattenGraphFilterFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+  </fieldType>
+  <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100"/>
+  <fieldType name="uuid" class="solr.UUIDField" indexed="true"/>
+  <field name="_version_" type="long" multiValued="false" indexed="true" stored="true"/>
+  <field name="constructs" type="text_general" indexed="true" required="true" stored="false"/>
+  <field name="content" type="text_c" indexed="true" required="true" stored="true"/>
+  <field name="datatypes" type="text_general" indexed="true" required="true" stored="false"/>
+  <field name="filename" type="text_general" indexed="true" required="true" stored="true"/>
+  <field name="id" type="uuid" indexed="true" required="true" stored="true"/>
+  <field name="linecode" type="long" indexed="false" required="true" stored="true"/>
+</schema>
