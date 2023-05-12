@@ -7,11 +7,25 @@ import java.util.List;
 import java.util.ArrayList;
 
 /**
-* Initializer holds initial values for the associated variable declarator.
-* NOTE: Subclasses of this class are not used in C.
-*/
+ * Initializer holds initial values for the associated variable declarator.
+ * NOTE: Subclasses of this class are not used in C.
+ */
 public class Initializer implements Cloneable, Traversable {
 
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
     // two types of initializers - value initializers (single
     // values and array of values) and constructors
     // = Expression
@@ -43,22 +57,23 @@ public class Initializer implements Cloneable, Traversable {
             params[0] = Initializer.class;
             params[1] = PrintWriter.class;
             class_print_method = params[0].getMethod("defaultPrint", params);
-        } catch(NoSuchMethodException e) {
+        } catch (NoSuchMethodException e) {
             throw new InternalError();
         }
     }
 
     /**
-    * Constructs a new empty initializer
-    */
+     * Constructs a new empty initializer
+     */
     protected Initializer() {
         children = new ArrayList<Traversable>(1);
     }
 
     /**
-    * Constructs a new initializer with the specified initializing value.
-    * @param value the initializing value expression.
-    */
+     * Constructs a new initializer with the specified initializing value.
+     * 
+     * @param value the initializing value expression.
+     */
     public Initializer(Expression value) {
         object_print_method = class_print_method;
         children = new ArrayList<Traversable>(1);
@@ -68,11 +83,12 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Constructs a new designated initializer with the given designator and the
-    * initial value.
-    * @param designator the designator for a member or an element.
-    * @param value the initial value.
-    */
+     * Constructs a new designated initializer with the given designator and the
+     * initial value.
+     * 
+     * @param designator the designator for a member or an element.
+     * @param value      the initial value.
+     */
     public Initializer(Expression designator, Expression value) {
         object_print_method = class_print_method;
         children = new ArrayList<Traversable>(1);
@@ -82,9 +98,10 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Constructs a new initializer with the specified list of values.
-    * @param values the list of initializing values.
-    */
+     * Constructs a new initializer with the specified list of values.
+     * 
+     * @param values the list of initializing values.
+     */
     public Initializer(List values) {
         object_print_method = class_print_method;
         children = new ArrayList<Traversable>(values.size());
@@ -100,11 +117,12 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Constructs a new initializer with the specified designator and the list
-    * of values.
-    * @param designator the designator for a member or an element.
-    * @param values the list of initializing values.
-    */
+     * Constructs a new initializer with the specified designator and the list
+     * of values.
+     * 
+     * @param designator the designator for a member or an element.
+     * @param values     the list of initializing values.
+     */
     public Initializer(Expression designator, List values) {
         object_print_method = class_print_method;
         children = new ArrayList<Traversable>(values.size());
@@ -120,9 +138,10 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Adds the specified traversable object to the list of children.
-    * @param t the traversable object to be added.
-    */
+     * Adds the specified traversable object to the list of children.
+     * 
+     * @param t the traversable object to be added.
+     */
     protected void addChild(Traversable t) {
         if (t.getParent() != null) {
             throw new NotAnOrphanException(this.getClass().getName());
@@ -136,7 +155,7 @@ public class Initializer implements Cloneable, Traversable {
         Initializer o = null;
         try {
             o = (Initializer) super.clone();
-        } catch(CloneNotSupportedException e) {
+        } catch (CloneNotSupportedException e) {
             throw new InternalError();
         }
         if (designator != null) {
@@ -149,19 +168,20 @@ public class Initializer implements Cloneable, Traversable {
         for (int i = 0; i < children_size; i++) {
             Traversable child = children.get(i);
             if (child instanceof Expression) {
-                o.addChild(((Expression)child).clone());
+                o.addChild(((Expression) child).clone());
             } else {
-                o.addChild(((Initializer)child).clone());
+                o.addChild(((Initializer) child).clone());
             }
         }
         return o;
     }
 
     /**
-    * Prints an initializer to the specified writer.
-    * @param i The initializer to print.
-    * @param o The writer on which to print the initializer.
-    */
+     * Prints an initializer to the specified writer.
+     * 
+     * @param i The initializer to print.
+     * @param o The writer on which to print the initializer.
+     */
     public static void defaultPrint(Initializer i, PrintWriter o) {
         if (i.designator != null) {
             i.designator.print(o);
@@ -179,9 +199,9 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Converts this initializer to a string by calling the default print method.
-    * All sub classes will be using this method unless specialized.
-    */
+     * Converts this initializer to a string by calling the default print method.
+     * All sub classes will be using this method unless specialized.
+     */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder(32);
@@ -219,10 +239,10 @@ public class Initializer implements Cloneable, Traversable {
             return;
         }
         try {
-            object_print_method.invoke(null, new Object[] {this, o});
-        } catch(IllegalAccessException e) {
+            object_print_method.invoke(null, new Object[] { this, o });
+        } catch (IllegalAccessException e) {
             throw new InternalError();
-        } catch(InvocationTargetException e) {
+        } catch (InvocationTargetException e) {
             throw new InternalError();
         }
     }
@@ -239,10 +259,11 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Overrides the class print method, so that all subsequently
-    * created objects will use the supplied method.
-    * @param m The new print method.
-    */
+     * Overrides the class print method, so that all subsequently
+     * created objects will use the supplied method.
+     * 
+     * @param m The new print method.
+     */
     static public void setClassPrintMethod(Method m) {
         class_print_method = m;
     }
@@ -252,9 +273,10 @@ public class Initializer implements Cloneable, Traversable {
     }
 
     /**
-    * Overrides the print method for this object only.
-    * @param m The new print method.
-    */
+     * Overrides the print method for this object only.
+     * 
+     * @param m The new print method.
+     */
     public void setPrintMethod(Method m) {
         object_print_method = m;
     }

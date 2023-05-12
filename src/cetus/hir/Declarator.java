@@ -9,12 +9,28 @@ import java.util.Collections;
 import java.util.List;
 
 /**
-* Represents the part of a declaration that is the name of the symbol, some type
-* information, and initial values. This class actually is more similar to what
-* the C++ grammar calls an init-declarator.  Many different constructors are
-* provided because Java does not have default arguments.
-*/
+ * Represents the part of a declaration that is the name of the symbol, some
+ * type
+ * information, and initial values. This class actually is more similar to what
+ * the C++ grammar calls an init-declarator. Many different constructors are
+ * provided because Java does not have default arguments.
+ */
 public abstract class Declarator implements Cloneable, Traversable {
+
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
 
     /** The default print method */
     private static Method class_print_method;
@@ -27,9 +43,8 @@ public abstract class Declarator implements Cloneable, Traversable {
         try {
             parameters[0] = Declarator.class;
             parameters[1] = PrintWriter.class;
-            class_print_method =
-                    parameters[0].getMethod("defaultPrint", parameters);
-        } catch(NoSuchMethodException e) {
+            class_print_method = parameters[0].getMethod("defaultPrint", parameters);
+        } catch (NoSuchMethodException e) {
             throw new InternalError();
         }
     }
@@ -49,12 +64,11 @@ public abstract class Declarator implements Cloneable, Traversable {
     /** Exception specification - not used in C */
     private ExceptionSpecification espec;
 
-    protected static final List empty_list =
-            Collections.unmodifiableList(new ArrayList<Object>(0));
+    protected static final List empty_list = Collections.unmodifiableList(new ArrayList<Object>(0));
 
     /**
-    * Constructs an empty declarator.
-    */
+     * Constructs an empty declarator.
+     */
     protected Declarator() {
         object_print_method = class_print_method;
         parent = null;
@@ -64,9 +78,9 @@ public abstract class Declarator implements Cloneable, Traversable {
     }
 
     /**
-    * Constructs a declarator with the given size of the child list.
-    * This method is identical to {@link #Declarator()}.
-    */
+     * Constructs a declarator with the given size of the child list.
+     * This method is identical to {@link #Declarator()}.
+     */
     protected Declarator(int size) {
         object_print_method = class_print_method;
         parent = null;
@@ -76,40 +90,40 @@ public abstract class Declarator implements Cloneable, Traversable {
     }
 
     /**
-    * Inserts a new child declaration to the parameter list.
-    *
-    * @param decl the new parameter declaration to be inserted.
-    * @throws NotAnOrphanException if <b>decl</b> has a parent object.
-    */
+     * Inserts a new child declaration to the parameter list.
+     *
+     * @param decl the new parameter declaration to be inserted.
+     * @throws NotAnOrphanException if <b>decl</b> has a parent object.
+     */
     public abstract void addParameter(Declaration decl);
 
     /**
-    * Inserts a new child declaration to the parameter list before the given
-    * reference declaration.
-    *
-    * @param ref the reference parameter declaration.
-    * @param decl the new parameter declaration to be inserted.
-    * @throws IllegalArgumentException if <b>ref</b> is not found.
-    * @throws NotAnOrphanException if <b>decl</b> has a parent object.
-    */
+     * Inserts a new child declaration to the parameter list before the given
+     * reference declaration.
+     *
+     * @param ref  the reference parameter declaration.
+     * @param decl the new parameter declaration to be inserted.
+     * @throws IllegalArgumentException if <b>ref</b> is not found.
+     * @throws NotAnOrphanException     if <b>decl</b> has a parent object.
+     */
     public abstract void addParameterBefore(Declaration ref, Declaration decl);
 
     /**
-    * Inserts a new child declaration to the parameter list after the given
-    * reference declaration.
-    *
-    * @param ref the reference parameter declaration.
-    * @param decl the new parameter declaration to be inserted.
-    * @throws IllegalArgumentException if <b>ref</b> is not found.
-    * @throws NotAnOrphanException if <b>decl</b> has a parent object.
-    */
+     * Inserts a new child declaration to the parameter list after the given
+     * reference declaration.
+     *
+     * @param ref  the reference parameter declaration.
+     * @param decl the new parameter declaration to be inserted.
+     * @throws IllegalArgumentException if <b>ref</b> is not found.
+     * @throws NotAnOrphanException     if <b>decl</b> has a parent object.
+     */
     public abstract void addParameterAfter(Declaration ref, Declaration decl);
 
     /**
-    * Appends a new specifier to the list of trailing specifiers.
-    *
-    * @param spec the new specifier to be appended.
-    */
+     * Appends a new specifier to the list of trailing specifiers.
+     *
+     * @param spec the new specifier to be appended.
+     */
     public void addTrailingSpecifier(Specifier spec) {
         if (trailing_specs == null) {
             trailing_specs = new ArrayList<Specifier>(2);
@@ -121,8 +135,8 @@ public abstract class Declarator implements Cloneable, Traversable {
     public Declarator clone() {
         Declarator d = null;
         try {
-            d = (Declarator)super.clone();
-        } catch(CloneNotSupportedException e) {
+            d = (Declarator) super.clone();
+        } catch (CloneNotSupportedException e) {
             throw new InternalError();
         }
         d.parent = null;
@@ -142,31 +156,32 @@ public abstract class Declarator implements Cloneable, Traversable {
     }
 
     /**
-    * Checks if the given object is equal to the declarator.
-    *
-    * @param o the object to be compared.
-    * @return true if {@code o == this}.
-    */
+     * Checks if the given object is equal to the declarator.
+     *
+     * @param o the object to be compared.
+     * @return true if {@code o == this}.
+     */
     @Override
     public boolean equals(Object o) {
         return (o == this);
     }
 
     /**
-    * Returns the hash code of the declarator.
-    *
-    * @return the identity hash code of the declarator.
-    */
-    @Override public int hashCode() {
+     * Returns the hash code of the declarator.
+     *
+     * @return the identity hash code of the declarator.
+     */
+    @Override
+    public int hashCode() {
         return System.identityHashCode(this);
     }
 
     /**
-    * Prints a declarator to a stream.
-    *
-    * @param d The declarator to print.
-    * @param o The writer on which to print the declarator.
-    */
+     * Prints a declarator to a stream.
+     *
+     * @param d The declarator to print.
+     * @param o The writer on which to print the declarator.
+     */
     public static void defaultPrint(Declarator d, PrintWriter o) {
         PrintTools.printList(d.leading_specs, o);
         PrintTools.printList(d.trailing_specs, o);
@@ -176,10 +191,10 @@ public abstract class Declarator implements Cloneable, Traversable {
     }
 
     /**
-    * Converts the declarator to a string by calling the default print method.
-    * All sub classes will be using this method unless special handling is
-    * necessary.
-    */
+     * Converts the declarator to a string by calling the default print method.
+     * All sub classes will be using this method unless special handling is
+     * necessary.
+     */
     @Override
     public String toString() {
         StringWriter sw = new StringWriter(80);
@@ -193,31 +208,32 @@ public abstract class Declarator implements Cloneable, Traversable {
     }
 
     /**
-    * Returns the variable initializer of the declarator if one exists.
-    *
-    * @return the initializer or null.
-    */
+     * Returns the variable initializer of the declarator if one exists.
+     *
+     * @return the initializer or null.
+     */
     public Initializer getInitializer() {
         if (children.size() > 0) {
-            return (Initializer)children.get(0);
+            return (Initializer) children.get(0);
         } else {
             return null;
         }
     }
 
     /**
-    * Returns a List of Function Parameter
-    *
-    * @return List null is returned when there is no Function Parameter in the
-    * Declarator
-    */
+     * Returns a List of Function Parameter
+     *
+     * @return List null is returned when there is no Function Parameter in the
+     *         Declarator
+     */
     public abstract List<Declaration> getParameters();
 
     /**
-    * Returns the parameter at specified index.
-    * @param index - zero-based index of the required parameter
-    * @return - parameter at specified index or null
-    */
+     * Returns the parameter at specified index.
+     * 
+     * @param index - zero-based index of the required parameter
+     * @return - parameter at specified index or null
+     */
     public Declaration getParameter(int index) {
         List<Declaration> params = getParameters();
         if (params != null && index >= 0 && index < params.size()) {
@@ -232,28 +248,28 @@ public abstract class Declarator implements Cloneable, Traversable {
     }
 
     /**
-    * Returns the list of specifiers trailing the declarator.
-    *
-    * @return the trailing specifiers.
-    */
+     * Returns the list of specifiers trailing the declarator.
+     *
+     * @return the trailing specifiers.
+     */
     public List<Specifier> getArraySpecifiers() {
         return trailing_specs;
     }
 
     /**
-    * Returns the list of specifiers leading the declarator.
-    *
-    * @return the leading specifiers.
-    */
+     * Returns the list of specifiers leading the declarator.
+     *
+     * @return the leading specifiers.
+     */
     public List<Specifier> getSpecifiers() {
         return leading_specs;
     }
 
     /**
-    * Returns the symbol declared by this declarator.
-    *
-    * @return the name ID of the declarator.
-    */
+     * Returns the symbol declared by this declarator.
+     *
+     * @return the name ID of the declarator.
+     */
     public abstract IDExpression getID();
 
     /** Prints the declarator to the specified print writer. */
@@ -262,28 +278,28 @@ public abstract class Declarator implements Cloneable, Traversable {
             return;
         }
         try {
-            object_print_method.invoke(null, new Object[] {this, o});
-        } catch(IllegalAccessException e) {
+            object_print_method.invoke(null, new Object[] { this, o });
+        } catch (IllegalAccessException e) {
             throw new InternalError(e.getMessage());
-        } catch(InvocationTargetException e) {
+        } catch (InvocationTargetException e) {
             throw new InternalError(e.getMessage());
         }
     }
 
     /**
-    * This traversable interface is not supported for declarators.
-    *
-    * @throws UnsupportedOperationException always.
-    */
+     * This traversable interface is not supported for declarators.
+     *
+     * @throws UnsupportedOperationException always.
+     */
     public void removeChild(Traversable child) {
         throw new UnsupportedOperationException();
     }
 
     /**
-    * This traversable interface is not supported for declarators.
-    *
-    * @throws UnsupportedOperationException always.
-    */
+     * This traversable interface is not supported for declarators.
+     *
+     * @throws UnsupportedOperationException always.
+     */
     public void setChild(int index, Traversable t) {
         throw new UnsupportedOperationException();
     }
@@ -295,12 +311,12 @@ public abstract class Declarator implements Cloneable, Traversable {
     protected abstract void setDirectDeclarator(IDExpression direct_decl);
 
     /**
-    * Sets the initial value of the variable.  The initial value cannot be set
-    * in the constructor, for the purpose of limiting the number of
-    * constructors.
-    *
-    * @param init An initial value for the variable.
-    */
+     * Sets the initial value of the variable. The initial value cannot be set
+     * in the constructor, for the purpose of limiting the number of
+     * constructors.
+     *
+     * @param init An initial value for the variable.
+     */
     public void setInitializer(Initializer init) {
         if (getInitializer() != null) {
             getInitializer().setParent(null);

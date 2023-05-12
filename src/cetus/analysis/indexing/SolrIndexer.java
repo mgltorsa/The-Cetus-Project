@@ -1,11 +1,9 @@
 package cetus.analysis.indexing;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Spliterator;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -21,17 +19,19 @@ import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 
 import cetus.analysis.AnalysisPass;
-import cetus.hir.DFIterator;
-import cetus.hir.Loop;
+import cetus.analysis.DataMining;
+import cetus.entities.DataRaw;
 import cetus.hir.Program;
 
 public class SolrIndexer extends AnalysisPass {
 
     private Logger logger = Logger.getLogger(this.getClass().getSimpleName());
     private SolrClient solrClient;
+    private DataMining crawler;
 
     public SolrIndexer(Program program) {
         super(program);
+        crawler = new DataMining(program);
     }
 
     @Override
@@ -49,8 +49,10 @@ public class SolrIndexer extends AnalysisPass {
 
         setupClient();
 
+        crawler.start();
+
         logger.info("Starting Solr Indexer");
-        List<SolrInputDocument> inDocuments = mapLoopToDocuments(getLoops(program));
+        List<SolrInputDocument> inDocuments = mapDataRawToDocuments(crawler.getDataMinning());
         try {
             for (SolrInputDocument inDoc : inDocuments) {
                 solrClient.add(inDoc);
@@ -79,29 +81,30 @@ public class SolrIndexer extends AnalysisPass {
 
     }
 
-    private List<Loop> getLoops(Program progam) {
-        List<Loop> loops = new ArrayList<>();
-        new DFIterator<Loop>(program, Loop.class).forEachRemaining(loops::add);
-        return loops;
-    }
-
-    private List<SolrInputDocument> mapLoopToDocuments(List<Loop> loops) {
-        List<SolrInputDocument> documents = StreamSupport
-                .stream(loops.spliterator(), true)
+    private List<SolrInputDocument> mapDataRawToDocuments(List<DataRaw> dataMinning) {
+        return StreamSupport
+                .stream(dataMinning.spliterator(), true)
                 .map(this::mapLoopToDocument)
                 .collect(Collectors.toList());
-        // List<SolrInputDocument> documents = new ArrayList<>();
-        return documents;
     }
 
-    private SolrInputDocument mapLoopToDocument(Loop loop) {
+    private SolrInputDocument mapLoopToDocument(DataRaw dataRaw) {
         SolrInputDocument doc = new SolrInputDocument();
 
-        doc.addField("filename", loop.getCondition().toString());
-        doc.addField("content", loop.toString());
-        doc.addField("constructs", doc);
-        doc.addField("linecode", doc);
-        doc.addField("datatypes", doc);
+        doc.addField("filename", dataRaw.getFilename());
+
+        doc.addField("content", dataRaw.getValue().toString());
+
+        if (dataRaw.getLineCode() != null) {
+            doc.addField("linecode", dataRaw.getLineCode());
+        }
+
+        if (dataRaw.getColumnCode() != null) {
+            doc.addField("columncode", dataRaw.getColumnCode());
+        }
+
+        doc.addField("constructs", dataRaw.getTypeValue());
+        doc.addField("datatypes", dataRaw.getTypeValue().replaceAll(";", " "));
 
         return doc;
     }

@@ -6,6 +6,21 @@ import java.lang.reflect.Method;
 /** Represents a boolean literal (true or false). */
 public class BooleanLiteral extends Literal {
 
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
+
     private static Method class_print_method;
 
     static {
@@ -14,18 +29,18 @@ public class BooleanLiteral extends Literal {
             params[0] = BooleanLiteral.class;
             params[1] = PrintWriter.class;
             class_print_method = params[0].getMethod("defaultPrint", params);
-        } catch(NoSuchMethodException e) {
+        } catch (NoSuchMethodException e) {
             throw new InternalError();
         }
     }
-    
+
     private boolean value;
 
     /**
-    * Constructs a boolean literal with the specified boolean value.
-    *
-    * @param value the boolean value.
-    */
+     * Constructs a boolean literal with the specified boolean value.
+     *
+     * @param value the boolean value.
+     */
     public BooleanLiteral(boolean value) {
         object_print_method = class_print_method;
         this.value = value;
@@ -34,17 +49,17 @@ public class BooleanLiteral extends Literal {
     /** Returns a clone of the boolean literal. */
     @Override
     public BooleanLiteral clone() {
-        BooleanLiteral o = (BooleanLiteral)super.clone();
+        BooleanLiteral o = (BooleanLiteral) super.clone();
         o.value = value;
         return o;
     }
 
     /**
-    * Prints a literal to a stream.
-    *
-    * @param l The literal to print.
-    * @param o The writer on which to print the literal.
-    */
+     * Prints a literal to a stream.
+     *
+     * @param l The literal to print.
+     * @param o The writer on which to print the literal.
+     */
     public static void defaultPrint(BooleanLiteral l, PrintWriter o) {
         o.print(Boolean.toString(l.value));
     }
@@ -58,14 +73,14 @@ public class BooleanLiteral extends Literal {
     /** Compares the boolean literal with the specified object. */
     @Override
     public boolean equals(Object o) {
-        return (super.equals(o) && value == ((BooleanLiteral)o).value);
+        return (super.equals(o) && value == ((BooleanLiteral) o).value);
     }
 
     /**
-    * Returns the boolean value.
-    *
-    * @return the value of this BooleanLiteral.
-    */
+     * Returns the boolean value.
+     *
+     * @return the value of this BooleanLiteral.
+     */
     public boolean getValue() {
         return value;
     }
@@ -76,18 +91,18 @@ public class BooleanLiteral extends Literal {
     }
 
     /**
-    * Overrides the class print method, so that all subsequently
-    * created objects will use the supplied method.
-    *
-    * @param m The new print method.
-    */
+     * Overrides the class print method, so that all subsequently
+     * created objects will use the supplied method.
+     *
+     * @param m The new print method.
+     */
     static public void setClassPrintMethod(Method m) {
         class_print_method = m;
     }
 
     /**
-    * Set the boolean value of this object.
-    */
+     * Set the boolean value of this object.
+     */
     public void setValue(boolean value) {
         this.value = value;
     }

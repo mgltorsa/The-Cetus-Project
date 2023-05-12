@@ -808,12 +808,12 @@ public class Driver {
 
         PrintTools.printlnStatus("[Driver] print all options :\n" + options.dumpOptions(), 4);
         System.out.println(program);
-        
-        if (getOptionValue("DataMining-analysis") != null) {
-			DataMining programm = new DataMining(program);
-			AnalysisPass.run(programm);
 
-		}
+        // if (getOptionValue("DataMining-analysis") != null) {
+
+        AnalysisPass.run(new SolrIndexer(program));
+
+        // }
         if (getOptionValue("teliminate-branch") != null && !getOptionValue("teliminate-branch").equals("0")) {
             TransformPass.run(new BranchEliminator(program));
         }
@@ -847,8 +847,6 @@ public class Driver {
         if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
             AnalysisPass.run(new DDTDriver(program));
         }
-
-        AnalysisPass.run(new SolrIndexer(program));
 
         if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
             AnalysisPass.run(new ArrayPrivatization(program));
@@ -886,8 +884,6 @@ public class Driver {
         if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
             TransformPass.run(new ParallelAwareTilingPass(program, options));
         }
-
-        
 
     }
 

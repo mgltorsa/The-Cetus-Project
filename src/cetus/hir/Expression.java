@@ -11,11 +11,26 @@ import java.util.List;
 import java.util.Collections;
 
 /**
-* Base class for all expressions. Expressions are compared lexically against
-* other expressions when used in collections.
-*/
+ * Base class for all expressions. Expressions are compared lexically against
+ * other expressions when used in collections.
+ */
 public abstract class Expression
-                implements Cloneable, Comparable<Expression>, Traversable {
+        implements Cloneable, Comparable<Expression>, Traversable {
+
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
 
     /** The print method for the expression */
     protected Method object_print_method;
@@ -27,14 +42,13 @@ public abstract class Expression
     protected List<Traversable> children;
 
     /**
-    * Determines whether this expression should have a set of parentheses
-    * around it when printed.
-    */
+     * Determines whether this expression should have a set of parentheses
+     * around it when printed.
+     */
     protected boolean needs_parens;
 
     /** Empty child list for expressions having no children */
-    protected static final List empty_list =
-            Collections.unmodifiableList(new ArrayList<Object>(0));
+    protected static final List empty_list = Collections.unmodifiableList(new ArrayList<Object>(0));
 
     /** Constructor for derived classes. */
     protected Expression() {
@@ -44,10 +58,10 @@ public abstract class Expression
     }
 
     /**
-    * Constructor for derived classes.
-    *
-    * @param size The initial size for the child list.
-    */
+     * Constructor for derived classes.
+     *
+     * @param size The initial size for the child list.
+     */
     @SuppressWarnings("unchecked")
     protected Expression(int size) {
         parent = null;
@@ -60,16 +74,16 @@ public abstract class Expression
     }
 
     /**
-    * Creates and returns a deep copy of this expression.
-    *
-    * @return a deep copy of this expression.
-    */
+     * Creates and returns a deep copy of this expression.
+     *
+     * @return a deep copy of this expression.
+     */
     @Override
     public Expression clone() {
         Expression o = null;
         try {
-            o = (Expression)super.clone();
-        } catch(CloneNotSupportedException e) {
+            o = (Expression) super.clone();
+        } catch (CloneNotSupportedException e) {
             throw new InternalError();
         }
         o.object_print_method = object_print_method;
@@ -79,10 +93,10 @@ public abstract class Expression
             for (int i = 0; i < children.size(); i++) {
                 Traversable new_child = children.get(i);
                 if (new_child instanceof Expression) {
-                    new_child = ((Expression)new_child).clone();
-                // Handling of StatementExpression (gcc extension)
+                    new_child = ((Expression) new_child).clone();
+                    // Handling of StatementExpression (gcc extension)
                 } else if (new_child instanceof Statement) {
-                    new_child = ((Statement)new_child).clone();
+                    new_child = ((Statement) new_child).clone();
                 }
                 new_child.setParent(o);
                 o.children.add(new_child);
@@ -104,47 +118,48 @@ public abstract class Expression
     }
 
     /**
-    * Checks if the given object is has the same type with this expression and
-    * its children is same with this expression's. The sub classes of expression
-    * should call this method first and proceed with more checking if they
-    * have additional fields to be checked.
-    * @param o the object to be compared with.
-    * @return true if {@code o!=null}, {@code this.getClass()==o.getClass()},
-    *       and {@code this.children.equals(o.children) ||
-    *       this.children==o.children==null}
-    */
+     * Checks if the given object is has the same type with this expression and
+     * its children is same with this expression's. The sub classes of expression
+     * should call this method first and proceed with more checking if they
+     * have additional fields to be checked.
+     * 
+     * @param o the object to be compared with.
+     * @return true if {@code o!=null}, {@code this.getClass()==o.getClass()},
+     *         and {@code this.children.equals(o.children) ||
+     *       this.children==o.children==null}
+     */
     @Override
     public boolean equals(Object o) {
         if (o == null || this.getClass() != o.getClass()) {
             return false;
         }
         if (children == null) {
-            return (((Expression)o).children == null);
+            return (((Expression) o).children == null);
         } else {
-            return children.equals(((Expression)o).children);
+            return children.equals(((Expression) o).children);
         }
     }
 
     /**
-    * Returns the hash code of the expression. It returns the hash code of the
-    * string representation since expressions are compared lexically.
-    *
-    * @return the integer hash code of the expression.
-    */
+     * Returns the hash code of the expression. It returns the hash code of the
+     * string representation since expressions are compared lexically.
+     *
+     * @return the integer hash code of the expression.
+     */
     @Override
     public int hashCode() {
         return hashCode(0);
     }
 
     /**
-    * Returns cumulative hash code with the given initial value, {@code h}.
-    * This is intended for optimizing memory usage when computing hash code of
-    * an expression object. Previous approach constructs a string representation
-    * of the expression to get the hash code while this approach uses the same
-    * algorithm as {@link String#hashCode()} without creating a string. All sub
-    * classes of {@code Expression} have there specific implementations of this
-    * method and {@link #hashCode()} simply returns {@code hashCode(0)}.
-    */
+     * Returns cumulative hash code with the given initial value, {@code h}.
+     * This is intended for optimizing memory usage when computing hash code of
+     * an expression object. Previous approach constructs a string representation
+     * of the expression to get the hash code while this approach uses the same
+     * algorithm as {@link String#hashCode()} without creating a string. All sub
+     * classes of {@code Expression} have there specific implementations of this
+     * method and {@link #hashCode()} simply returns {@code hashCode(0)}.
+     */
     // NOTE for developers: Make this method consistent with toString() for all
     // sub classes of expression.
     protected int hashCode(int h) {
@@ -152,20 +167,20 @@ public abstract class Expression
     }
 
     /**
-    * Returns a list of subexpressions of this expression that match
-    * <var>expr</var> using its equals method.
-    *
-    * @param expr The subexpression sought.
-    * @return a list of matching subexpressions, which may be empty.
-    */
+     * Returns a list of subexpressions of this expression that match
+     * <var>expr</var> using its equals method.
+     *
+     * @param expr The subexpression sought.
+     * @return a list of matching subexpressions, which may be empty.
+     */
     public List<Expression> findExpression(Expression expr) {
-        List<Expression> result = new LinkedList<Expression> ();
+        List<Expression> result = new LinkedList<Expression>();
         if (expr != null) {
             BreadthFirstIterator iter = new BreadthFirstIterator(this);
             while (iter.hasNext()) {
                 Object obj = iter.next();
                 if (expr.equals(obj)) {
-                    result.add((Expression)obj);
+                    result.add((Expression) obj);
                 }
             }
         }
@@ -183,35 +198,35 @@ public abstract class Expression
     }
 
     /**
-    * Get the parent Statement containing this Expression.
-    *
-    * @return the enclosing Statement or null if this Expression
-    *   is not inside a Statement.
-    */
+     * Get the parent Statement containing this Expression.
+     *
+     * @return the enclosing Statement or null if this Expression
+     *         is not inside a Statement.
+     */
     public Statement getStatement() {
         Traversable t = this;
         do {
             t = t.getParent();
         } while (t != null && !(t instanceof Statement));
-        return (Statement)t;
+        return (Statement) t;
     }
 
     /**
-    * Prints the expression on the specified print writer.
-    *
-    * @param o the target print writer.
-    */
+     * Prints the expression on the specified print writer.
+     *
+     * @param o the target print writer.
+     */
     public void print(PrintWriter o) {
         if (object_print_method == null) {
             return;
         }
         try {
-            object_print_method.invoke(null, new Object[] {this, o});
-        } catch(IllegalAccessException e) {
+            object_print_method.invoke(null, new Object[] { this, o });
+        } catch (IllegalAccessException e) {
             System.err.println(e);
             e.printStackTrace();
             Tools.exit(1);
-        } catch(InvocationTargetException e) {
+        } catch (InvocationTargetException e) {
             System.err.println(e.getCause());
             e.printStackTrace();
             Tools.exit(1);
@@ -222,9 +237,9 @@ public abstract class Expression
     // TODO: remove if not used.
     public void printSelf() {
         /*
-           System.out.print("Source form: ");
-           print(System.out);
-           System.out.println("");
+         * System.out.print("Source form: ");
+         * print(System.out);
+         * System.out.println("");
          */
         if (this instanceof BinaryExpression) {
             System.out.print(((BinaryExpression) this).getOperator());
@@ -235,8 +250,8 @@ public abstract class Expression
             System.out.print(" " + "@" + hashCode());
         }
         /*
-           Fix Me
-           Not all children are Expression
+         * Fix Me
+         * Not all children are Expression
          */
         Iterator iter = children.iterator();
         Expression e = null;
@@ -252,19 +267,20 @@ public abstract class Expression
     }
 
     /**
-    * This operation is not allowed.
-    * @throws UnsupportedOperationException always
-    */
+     * This operation is not allowed.
+     * 
+     * @throws UnsupportedOperationException always
+     */
     public void removeChild(Traversable child) {
         throw new UnsupportedOperationException(
                 "Expressions do not support removal of arbitrary children.");
     }
 
     /**
-    * @throws NotAnOrphanException if <b>t</b> has a parent object.
-    * @throws IllegalArgumentException if <b>index</b> is out-of-range or
-    * <b>t</b> is not an expression.
-    */
+     * @throws NotAnOrphanException     if <b>t</b> has a parent object.
+     * @throws IllegalArgumentException if <b>index</b> is out-of-range or
+     *                                  <b>t</b> is not an expression.
+     */
     public void setChild(int index, Traversable t) {
         if (t.getParent() != null) {
             throw new NotAnOrphanException();
@@ -281,18 +297,18 @@ public abstract class Expression
     }
 
     /**
-    * Sets whether the expression needs to have
-    * an outer set of parentheses printed around it.
-    *
-    * @param f True to use parens, false to not use parens.
-    */
+     * Sets whether the expression needs to have
+     * an outer set of parentheses printed around it.
+     *
+     * @param f True to use parens, false to not use parens.
+     */
     public void setParens(boolean f) {
         needs_parens = f;
     }
 
     /**
-    * Checks if the expression needs parentheses around itself when printed.
-    */
+     * Checks if the expression needs parentheses around itself when printed.
+     */
     public boolean needsParens() {
         return needs_parens;
     }
@@ -305,25 +321,26 @@ public abstract class Expression
     }
 
     /**
-    * Overrides the print method for this object only.
-    *
-    * @param m The new print method.
-    */
+     * Overrides the print method for this object only.
+     *
+     * @param m The new print method.
+     */
     public void setPrintMethod(Method m) {
         object_print_method = m;
     }
 
     /**
-    * Swaps two expression on the IR tree.  If neither this expression nor
-    * <var>expr</var> has a parent, then this function has no effect. Otherwise,
-    * each expression ends up with the other's parent and exchange positions in
-    * the parents' lists of children.
-    *
-    * @param expr The expression with which to swap this expression.
-    * @throws IllegalArgumentException if <var>expr</var> is null.
-    * @throws IllegalStateException if the types of the expressions
-    *   are such that they would create inconsistent IR when swapped.
-    */
+     * Swaps two expression on the IR tree. If neither this expression nor
+     * <var>expr</var> has a parent, then this function has no effect. Otherwise,
+     * each expression ends up with the other's parent and exchange positions in
+     * the parents' lists of children.
+     *
+     * @param expr The expression with which to swap this expression.
+     * @throws IllegalArgumentException if <var>expr</var> is null.
+     * @throws IllegalStateException    if the types of the expressions
+     *                                  are such that they would create inconsistent
+     *                                  IR when swapped.
+     */
     public void swapWith(Expression expr) {
         if (expr == null) {
             throw new IllegalArgumentException();
@@ -371,12 +388,12 @@ public abstract class Expression
     }
 
     /**
-    * Verifies three properties of this object:
-    * (1) All children are not null, (2) the parent object has this
-    * object as a child, (3) all children have this object as the parent.
-    *
-    * @throws IllegalStateException if any of the properties are not true.
-    */
+     * Verifies three properties of this object:
+     * (1) All children are not null, (2) the parent object has this
+     * object as a child, (3) all children have this object as the parent.
+     *
+     * @throws IllegalStateException if any of the properties are not true.
+     */
     public void verify() throws IllegalStateException {
         if (parent != null && !parent.getChildren().contains(this)) {
             throw new IllegalStateException(
@@ -396,15 +413,15 @@ public abstract class Expression
     }
 
     /**
-    * Common operation used in constructors - adds the specified traversable
-    * object at the end of the child list.
-    *
-    * @param t the new child object to be added.
-    * @throws NotAnOrphanException
-    */
+     * Common operation used in constructors - adds the specified traversable
+     * object at the end of the child list.
+     *
+     * @param t the new child object to be added.
+     * @throws NotAnOrphanException
+     */
     protected void addChild(Traversable t) {
         if (t.getParent() != null) {
-            System.out.println("t : "+ t +", parent: "+t.getParent()+"\n");
+            System.out.println("t : " + t + ", parent: " + t.getParent() + "\n");
             throw new NotAnOrphanException(this.getClass().getName());
         }
         children.add(t);
@@ -423,7 +440,7 @@ public abstract class Expression
         if (list.size() > 0) {
             Object o = list.get(0);
             if (o instanceof Expression) {
-                h = ((Expression)o).hashCode(h);
+                h = ((Expression) o).hashCode(h);
             } else {
                 h = hashCode(o, h);
             }
@@ -433,7 +450,7 @@ public abstract class Expression
                 }
                 o = list.get(i);
                 if (o instanceof Expression) {
-                    h = ((Expression)o).hashCode(h);
+                    h = ((Expression) o).hashCode(h);
                 } else {
                     h = hashCode(o, h);
                 }

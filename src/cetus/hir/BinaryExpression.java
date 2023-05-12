@@ -4,10 +4,25 @@ import java.io.PrintWriter;
 import java.lang.reflect.Method;
 
 /**
-* <b>BinaryExpression</b> represents an expression having a LHS operand, an
-* operator, and a RHS operand.
-*/
+ * <b>BinaryExpression</b> represents an expression having a LHS operand, an
+ * operator, and a RHS operand.
+ */
 public class BinaryExpression extends Expression {
+
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
 
     private static Method class_print_method;
 
@@ -17,7 +32,7 @@ public class BinaryExpression extends Expression {
             params[0] = BinaryExpression.class;
             params[1] = PrintWriter.class;
             class_print_method = params[0].getMethod("defaultPrint", params);
-        } catch(NoSuchMethodException e) {
+        } catch (NoSuchMethodException e) {
             throw new InternalError();
         }
     }
@@ -26,14 +41,14 @@ public class BinaryExpression extends Expression {
     protected BinaryOperator op;
 
     /**
-    * Creates a binary expression.
-    *
-    * @param lhs The lefthand expression.
-    * @param op A binary operator.
-    * @param rhs The righthand expression.
-    * @throws NotAnOrphanException if <b>lhs</b> or <b>rhs</b> has a parent
-    * object.
-    */
+     * Creates a binary expression.
+     *
+     * @param lhs The lefthand expression.
+     * @param op  A binary operator.
+     * @param rhs The righthand expression.
+     * @throws NotAnOrphanException if <b>lhs</b> or <b>rhs</b> has a parent
+     *                              object.
+     */
     public BinaryExpression(
             Expression lhs, BinaryOperator op, Expression rhs) {
         super(2);
@@ -46,17 +61,17 @@ public class BinaryExpression extends Expression {
     /** Returns a clone of the binary expression */
     @Override
     public BinaryExpression clone() {
-        BinaryExpression o = (BinaryExpression)super.clone();
+        BinaryExpression o = (BinaryExpression) super.clone();
         o.op = op;
         return o;
     }
 
     /**
-    * Prints a binary expression to a stream.
-    *
-    * @param e The expression to print.
-    * @param o The writer on which to print the expression.
-    */
+     * Prints a binary expression to a stream.
+     *
+     * @param e The expression to print.
+     * @param o The writer on which to print the expression.
+     */
     public static void defaultPrint(BinaryExpression e, PrintWriter o) {
         if (e.needs_parens) {
             o.print("(");
@@ -70,10 +85,11 @@ public class BinaryExpression extends Expression {
     }
 
     /**
-    * Returns a string representation of the binary expression. The returned
-    * string is equivalent to the printed stream through {@link #defaultPrint}.
-    * @return the string representation.
-    */
+     * Returns a string representation of the binary expression. The returned
+     * string is equivalent to the printed stream through {@link #defaultPrint}.
+     * 
+     * @return the string representation.
+     */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder(32);
@@ -102,85 +118,85 @@ public class BinaryExpression extends Expression {
     }
 
     /**
-    * Returns the lefthand expression.
-    *
-    * @return the lefthand expression.
-    */
+     * Returns the lefthand expression.
+     *
+     * @return the lefthand expression.
+     */
     public Expression getLHS() {
-        return (Expression)children.get(0);
+        return (Expression) children.get(0);
     }
 
     /**
-    * Returns the operator of the expression.
-    *
-    * @return the operator.
-    */
+     * Returns the operator of the expression.
+     *
+     * @return the operator.
+     */
     public BinaryOperator getOperator() {
         return op;
     }
 
     /**
-    * Returns the righthand expression.
-    *
-    * @return the righthand expression.
-    */
+     * Returns the righthand expression.
+     *
+     * @return the righthand expression.
+     */
     public Expression getRHS() {
-        
-        return (Expression)children.get(1);
+
+        return (Expression) children.get(1);
     }
 
     /**
-    * Overrides the class print method, so that all subsequently
-    * created objects will use the supplied method.
-    *
-    * @param m The new print method.
-    */
+     * Overrides the class print method, so that all subsequently
+     * created objects will use the supplied method.
+     *
+     * @param m The new print method.
+     */
     static public void setClassPrintMethod(Method m) {
         class_print_method = m;
     }
 
     /**
-    * Sets the lefthand expression.
-    *
-    * @param expr The new lefthand expression.  It must not be
-    *   the child of another expression or null.
-    * @throws IllegalArgumentException if <b>expr</b> is null.
-    * @throws NotAnOrphanException if <b>expr</b> has a parent object.
-    */
+     * Sets the lefthand expression.
+     *
+     * @param expr The new lefthand expression. It must not be
+     *             the child of another expression or null.
+     * @throws IllegalArgumentException if <b>expr</b> is null.
+     * @throws NotAnOrphanException     if <b>expr</b> has a parent object.
+     */
     public void setLHS(Expression expr) {
         setChild(0, expr);
     }
 
     /**
-    * Sets the operator for the expression.
-    *
-    * @param op The operator.
-    */
+     * Sets the operator for the expression.
+     *
+     * @param op The operator.
+     */
     public void setOperator(BinaryOperator op) {
         this.op = op;
     }
 
     /**
-    * Sets the righthand expression.
-    *
-    * @param expr The new righthand expression. It must not be the child of
-    *       another expression.
-    * @throws IllegalArgumentException if <b>expr</b> is null.
-    * @throws NotAnOrphanException if <b>expr</b> has a parent object.
-    */
+     * Sets the righthand expression.
+     *
+     * @param expr The new righthand expression. It must not be the child of
+     *             another expression.
+     * @throws IllegalArgumentException if <b>expr</b> is null.
+     * @throws NotAnOrphanException     if <b>expr</b> has a parent object.
+     */
     public void setRHS(Expression expr) {
         setChild(1, expr);
     }
 
     /**
-    * Compares the binary expression with the specified object.
-    *
-    * @return true if their childrens are equal and their operator is equal.
-    */
+     * Compares the binary expression with the specified object.
+     *
+     * @return true if their childrens are equal and their operator is equal.
+     */
     @Override
     public boolean equals(Object o) {
         return (super.equals(o) &&
-                op.equals(((BinaryExpression)o).op));
+                op.equals(((BinaryExpression) o).op));
     }
 
 }

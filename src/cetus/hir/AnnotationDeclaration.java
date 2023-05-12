@@ -6,10 +6,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
-* AnnotationDeclaration is used for stand-alone annotations in non-executable
-* code section, e.g., in a TranslationUnit.
-*/
+ * AnnotationDeclaration is used for stand-alone annotations in non-executable
+ * code section, e.g., in a TranslationUnit.
+ */
 public class AnnotationDeclaration extends Declaration {
+
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
 
     private static Method class_print_method;
 
@@ -19,24 +34,24 @@ public class AnnotationDeclaration extends Declaration {
             params[0] = AnnotationDeclaration.class;
             params[1] = PrintWriter.class;
             class_print_method = params[0].getMethod("defaultPrint", params);
-        } catch(NoSuchMethodException ex) {
+        } catch (NoSuchMethodException ex) {
             throw new InternalError();
         }
     }
 
     /**
-    * Constructs an empty annotation declaration.
-    */
+     * Constructs an empty annotation declaration.
+     */
     public AnnotationDeclaration() {
         super(-1);
         object_print_method = class_print_method;
     }
 
     /**
-    * Constructs a new annotation declaration with the given annotation.
-    *
-    * @param annotation the new annotation to be inserted.
-    */
+     * Constructs a new annotation declaration with the given annotation.
+     *
+     * @param annotation the new annotation to be inserted.
+     */
     public AnnotationDeclaration(Annotation annotation) {
         super(-1);
         object_print_method = class_print_method;
@@ -44,25 +59,25 @@ public class AnnotationDeclaration extends Declaration {
     }
 
     /**
-    * Returns an empty list - not used for an annotation declaration.
-    */
+     * Returns an empty list - not used for an annotation declaration.
+     */
     @SuppressWarnings("unchecked")
     public List<IDExpression> getDeclaredIDs() {
-        return (List<IDExpression>)empty_list;
+        return (List<IDExpression>) empty_list;
     }
 
     /**
-    * Prints this annotation declaration. It does not print anything since an
-    * annotation declaration works like a place holder for the enclosed
-    * annotations.
-    */
+     * Prints this annotation declaration. It does not print anything since an
+     * annotation declaration works like a place holder for the enclosed
+     * annotations.
+     */
     public static void defaultPrint(AnnotationDeclaration d, PrintWriter o) {
         // nothing to print.
     }
 
     /**
-    * Sets the class print method with the specified method.
-    */
+     * Sets the class print method with the specified method.
+     */
     public static void setClassPrintMethod(Method m) {
         class_print_method = m;
     }

@@ -90,7 +90,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
  */
-public class DataMining  extends AnalysisPass  {
+public class DataMining extends AnalysisPass {
 	// Miguel Added
 	public static final String PATTERN1 = "#,##0.00;(#,##0.00)";
 
@@ -132,11 +132,11 @@ public class DataMining  extends AnalysisPass  {
 
 	public static Set<Symbol> pri_set;
 
-/* 	private ArrayList<AnalysisLoopTarget> loops_Features; */
+	/* private ArrayList<AnalysisLoopTarget> loops_Features; */
 
 	private ArrayList<Loop> all_loops = new ArrayList<Loop>();
 
-	private ArrayList<DataRaw> listDataMining;
+	private List<DataRaw> listDataMining;
 
 	private FileWriter Otherwriter;
 
@@ -144,30 +144,39 @@ public class DataMining  extends AnalysisPass  {
 	// Pass name
 	private static final String pass_name = "[DataMining]";
 
+	public List<DataRaw> getDataMinning() {
+		return listDataMining;
+	}
+
 	public DataMining(Program program) {
-        super(program);
+		super(program);
 		setLogger();
 		elementId = 0;
 		listDataMining = new ArrayList<DataRaw>();
-	/* 	loops_Features = new ArrayList<AnalysisLoopTarget>(); */
+		/* loops_Features = new ArrayList<AnalysisLoopTarget>(); */
 		logger.info("Value, DataType ");
 
-	/* 	startAnalysis(program, ((TranslationUnit) program.getChildren().get(0)).getOutputFilename()); */
+		/*
+		 * startAnalysis(program, ((TranslationUnit)
+		 * program.getChildren().get(0)).getOutputFilename());
+		 */
 	}
 
-    public String getPassName() {
-		
+	public String getPassName() {
+
 		return pass_name;
 	}
 
 	@Override
 	public void start() {
-		analysisProgram(program); 
+		analysisProgram(program);
 	}
-	/* public void startAnalysis(Program program, String fileName) {
-		analysisProgram(program); 
-		System.out.println("Done");
-	} */
+	/*
+	 * public void startAnalysis(Program program, String fileName) {
+	 * analysisProgram(program);
+	 * System.out.println("Done");
+	 * }
+	 */
 
 	public void exportInformation(String information, String type) {
 
@@ -178,17 +187,42 @@ public class DataMining  extends AnalysisPass  {
 	public void analysisProgram(Traversable program) {
 
 		List<Traversable> children = program.getChildren();
-		if (children.size() != 0) {
+		if (children != null && children.size() != 0) {
 
 			for (int index = 0; index < children.size(); index++) {
-				analysisProgram(children.get(index));
+				Traversable t = children.get(index);
+
+				analysisProgram(t);
 			}
 
 		}
-		ArrayList<Traversable> childrenElement = new ArrayList<>(program.getChildren());
+
+		String filename = null;
+		if (program instanceof TranslationUnit) {
+			filename = ((TranslationUnit) program).getInputFilename();
+		}
+		List<Traversable> childrenElement = program.getChildren();
 		elementId++;
-		String typeElement=InstanceDataType(program);
-		DataRaw datainfo = new DataRaw(elementId, program.getParent(), program, typeElement, childrenElement, "0");
+		String typeElement = InstanceDataType(program);
+		String line_in_code = null;
+		String col_in_code = null;
+
+		int col = program.getColumn();
+		int row = program.getLine();
+
+		if (col == 0 && row == 0) {
+			line_in_code = row + "";
+			col_in_code = col + "";
+		}
+
+		if (program instanceof Statement) {
+			line_in_code = "" + ((Statement) program).where();
+		}
+
+		DataRaw datainfo = new DataRaw(elementId, program.getParent(), program, typeElement, childrenElement);
+		datainfo.setLineCode(line_in_code);
+		datainfo.setFilename(filename);
+		datainfo.setColumnCode(col_in_code);
 		listDataMining.add(datainfo);
 
 	}
@@ -309,8 +343,6 @@ public class DataMining  extends AnalysisPass  {
 		}
 	}
 
-	
-
 	// Miguel Added
 	public void exportInfor(Map<String, String> loopAnalysis) {
 		for (Map.Entry<String, String> entry : loopAnalysis.entrySet()) {
@@ -324,7 +356,5 @@ public class DataMining  extends AnalysisPass  {
 			}
 		}
 	}
-
-
 
 }

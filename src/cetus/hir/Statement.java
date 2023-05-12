@@ -14,6 +14,21 @@ import java.util.List;
  */
 public abstract class Statement implements Cloneable, Traversable, Annotatable {
 
+    public int line_in_original_file;
+    public int column_in_original_file;
+
+    @Override
+    public int getColumn() {
+        // TODO Auto-generated method stub
+        return column_in_original_file;
+    }
+
+    @Override
+    public int getLine() {
+        // TODO Auto-generated method stub
+        return line_in_original_file;
+    }
+
     /** The print method for the statement */
     protected Method object_print_method;
 
