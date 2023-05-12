@@ -26,7 +26,7 @@ else, elseif
 encapsulation, encapsulate
 exception, exceptions
 extends, extend
-false, falsy
+false, falsy, not, doesn't
 final, finals
 finally, finalizer
 float, floats
@@ -34,7 +34,7 @@ for, foreach
 function, functions, func
 generic, generics
 getter, getters
-if, else if
+if, wether, compare, is, could
 implements, implement
 import, imports
 inheritance, inherit, inherited
@@ -47,23 +47,32 @@ lib, libs
 link, links
 list, lists, struct
 long, longs
-loop, loops, for, iteration, repetition
-method, methods
-module, modules
-namespace, namespaces
-new, news
-null, nil
-object, objects
-operator, operators
-package, packages
-parameter, parameters, args, arg
-polymorphism, polymorphic
-private, privates
-protected, protects
+function, calls, functions, call, (), (, )
+string, strings
+operator, symbol, addition, add, +
+operator, symbol, subtraction, subtract, -
+operator, symbol, multiplication, multiply, *
+operator, symbol, division, divide, /
+modulo, mod
+increment, incrementing, incrementer
+decrement, decrementing, decrementer
+comparison, compare
+equal, equals, equality, =
+greater, >
+less, <
+and, &&, &, both, includes, all, every
+or, ||, some, any, various
+not, !, negated, negation, nor
+xor, ^, xnor, either
+pointer, reference, memory, address, *
+struct, structs
+typedef, typedefs
+sizeof, size
+void, none, null
 public, publics
 queue, queues
 recursion, recursive
-regex, regular expression, regular expressions
+regex, regular, expression, expressions
 return, returns, result
 set, sets
 short, shorts
@@ -83,29 +92,21 @@ type, types
 variable, variables, var
 void, voids
 loop, iteration, repetition, while, whilst
-array index, array indices
-integer, integers
-float, floats
-number, numbers, int, float, 
-function calls, function call, ()
-string, strings
-operator, symbol, addition, add, +
-operator, symbol, subtraction, subtract, -
-operator, symbol, multiplication, multiply, *
-operator, symbol, division, divide, /
-modulo, mod
-increment, incrementing, incrementer
-decrement, decrementing, decrementer
-comparison, compare
-equal, equals, equality, =
-greater, greater than
-less, less than
-and, &&, logical and
-or, ||, logical or
-not, !, logical not
-xor, ^, logical xor
-pointer, reference, memory address, *
-struct, structs
-typedef, typedefs
-sizeof, size
-void, none, null
+array, index, indices, list, various, row, rows, line
+integer, integers, int, number
+float, floats, number
+number, numbers, int, float
+loop, loops, for, iteration, repetition
+method, methods
+module, modules
+namespace, namespaces
+new, news
+null, nil
+object, objects
+operator, operators
+package, packages
+parameter, parameters, args, arg
+polymorphism, polymorphic
+private, privates
+protected, protects
+
