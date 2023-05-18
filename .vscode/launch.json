@@ -3,6 +3,28 @@
     "configurations": [
         {
             "type": "java",
+            "name": "Launch Driver CG",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "--libs=C:/Users/josee/OneDrive/Escritorio/NAS-Applications/CG C:/Users/josee/OneDrive/Escritorio/NAS-Applications/CG/cg.c"
+        },  
+        {
+            "type": "java",
+            "name": "Launch Driver EP",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "--libs=C:/Users/josee/OneDrive/Escritorio/NAS-Applications/EP C:/Users/josee/OneDrive/Escritorio/NAS-Applications/EP/ep.c"
+        },  
+        {
+            "type": "java",
+            "name": "Launch Driver MG",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "--libs=C:/Users/josee/OneDrive/Escritorio/NAS-Applications/MG C:/Users/josee/OneDrive/Escritorio/NAS-Applications/MG/mg.c"
+
+        },  
+        {
+            "type": "java",
             "name": "Launch Driver",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",

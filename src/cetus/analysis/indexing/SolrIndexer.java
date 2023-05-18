@@ -1,5 +1,6 @@
 package cetus.analysis.indexing;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import java.util.stream.StreamSupport;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
+import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.Http2SolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -49,6 +51,13 @@ public class SolrIndexer extends AnalysisPass {
 
         setupClient();
 
+        try {
+            this.solrClient.deleteByQuery("*:*");
+            this.solrClient.commit();
+        } catch (SolrServerException | IOException e) {
+            e.printStackTrace();
+        }
+
         crawler.start();
 
         logger.info("Starting Solr Indexer");
@@ -66,18 +75,6 @@ public class SolrIndexer extends AnalysisPass {
 
             solrClient.commit();
 
-            Map<String, String> paramsMap = new HashMap<String, String>();
-            SolrParams params = new MapSolrParams(paramsMap);
-
-            SolrQuery query = new SolrQuery();
-            query.set("q", "content:async");
-
-            QueryResponse response = solrClient.query(params, SolrRequest.METHOD.GET);
-
-            Spliterator<SolrDocument> results = response.getResults().spliterator();
-            StreamSupport.stream(results, true).forEach((document) -> {
-                logger.info("document: " + document.toString());
-            });
             logger.info("Finish docs output");
         } catch (Exception e) {
             e.printStackTrace();

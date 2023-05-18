@@ -47,6 +47,8 @@ public class Driver {
     /** The filenames supplied on the command line. */
     protected List<String> filenames;
 
+    public static String libs = "";
+
     /** Cetus default option file */
     public static String preferencesFileName = ".cetus.opt";
     public static String preferencesDirFileName = CetusGUITools.user_home + CetusGUITools.file_sep
@@ -165,7 +167,7 @@ public class Driver {
                 "normalize-loops",
                 "Normalize for loops so they begin at 0 and have a step of 1");
 
-        String parserLibs = "C:/opt/NPB3.3-SER-C/CG/";
+        String parserLibs = libs;
         System.out.println("PARSER LIBS: " + parserLibs);
         String parserLibsCommand = " -I " + parserLibs;
         if ((System.getProperty("os.name").toLowerCase()).indexOf("win") >= 0)
@@ -937,6 +939,15 @@ public class Driver {
         }
     }
 
+    public static void getLibs(String[] args) {
+        for (String arg : args) {
+            if (!arg.contains("libs")) {
+                continue;
+            }
+            libs += arg.split("=")[1];
+        }
+    }
+
     /**
      * Entry point for Cetus; creates a new Driver object,
      * and calls run on it with args.
@@ -947,6 +958,7 @@ public class Driver {
     public static void main(String[] args) {
 
         // checkUpdate();
+        getLibs(args);
         LoggingUtils.redirectOutput(args);
         if (args.length > 0 && args[0].toLowerCase().equals("-gui")) {
             // if (args.length == 0 || args[0].toLowerCase().equals("-gui")) {
