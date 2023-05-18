@@ -1,4 +1,3 @@
-#line 1 "cg.c"
 //-------------------------------------------------------------------------//
 //                                                                         //
 //  This benchmark is a serial C version of the NPB CG code. This C        //
@@ -36,42 +35,14 @@
 // NPB CG serial version      
 //---------------------------------------------------------------------
 
-#pragma startinclude #include <stdio.h>
-#line 38
 #include <stdio.h>
-#pragma endinclude
-#line 39
-#pragma startinclude #include <stdlib.h>
-#line 39
-#include <stdlib.h>
-#pragma endinclude
-#line 40
-#pragma startinclude #include <math.h>
-#line 40
+// #include <stdlib.h>
 #include <math.h>
-#pragma endinclude
-#line 41
 
-#pragma startinclude #include "globals.h"
-#line 42
 #include "globals.h"
-#pragma endinclude
-#line 43
-#pragma startinclude #include "../common/randdp.h"
-#line 43
 #include "../common/randdp.h"
-#pragma endinclude
-#line 44
-#pragma startinclude #include "../common/timers.h"
-#line 44
 #include "../common/timers.h"
-#pragma endinclude
-#line 45
-#pragma startinclude #include "../common/print_results.h"
-#line 45
 #include "../common/print_results.h"
-#pragma endinclude
-#line 46
 
 
 //---------------------------------------------------------------------
@@ -496,43 +467,7 @@ static void conj_grad(int colidx[],
       q[j] = sum;
     }
 
-    /*
-    for (j = 0; j < lastrow - firstrow + 1; j++) {
-      int i = rowstr[j];
-      int iresidue = (rowstr[j+1] - i) % 2;
-      double sum1 = 0.0;
-      double sum2 = 0.0;
-      if (iresidue == 1)
-        sum1 = sum1 + a[i]*p[colidx[i]];
-      for (k = i + iresidue; k <= rowstr[j+1] - 2; k += 2) {
-        sum1 = sum1 + a[k]  *p[colidx[k]];
-        sum2 = sum2 + a[k+1]*p[colidx[k+1]];
-      }
-      q[j] = sum1 + sum2;
-    }
-    */
-
-    /*
-    for (j = 0; j < lastrow - firstrow + 1; j++) {
-      int i = rowstr[j]; 
-      int iresidue = (rowstr[j+1] - i) % 8;
-      double sum = 0.0;
-      for (k = i; k <= i + iresidue - 1; k++) {
-        sum = sum + a[k]*p[colidx[k]];
-      }
-      for (k = i + iresidue; k <= rowstr[j+1] - 8; k += 8) {
-        sum = sum + a[k  ]*p[colidx[k  ]]
-                  + a[k+1]*p[colidx[k+1]]
-                  + a[k+2]*p[colidx[k+2]]
-                  + a[k+3]*p[colidx[k+3]]
-                  + a[k+4]*p[colidx[k+4]]
-                  + a[k+5]*p[colidx[k+5]]
-                  + a[k+6]*p[colidx[k+6]]
-                  + a[k+7]*p[colidx[k+7]];
-      }
-      q[j] = sum;
-    }
-    */
+  
 
     //---------------------------------------------------------------------
     // Obtain p.q

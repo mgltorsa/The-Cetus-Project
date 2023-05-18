@@ -1,4 +1,3 @@
-#line 1 "mg.c"
 //-------------------------------------------------------------------------//
 //                                                                         //
 //  This benchmark is a serial C version of the NPB MG code. This C        //
@@ -36,42 +35,14 @@
 //  program mg
 //---------------------------------------------------------------------
 
-#pragma startinclude #include <stdio.h>
-#line 38
 #include <stdio.h>
-#pragma endinclude
-#line 39
-#pragma startinclude #include <stdlib.h>
-#line 39
-#include <stdlib.h>
-#pragma endinclude
-#line 40
-#pragma startinclude #include <math.h>
-#line 40
+// #include <stdlib.h>
 #include <math.h>
-#pragma endinclude
-#line 41
 
-#pragma startinclude #include "globals.h"
-#line 42
 #include "globals.h"
-#pragma endinclude
-#line 43
-#pragma startinclude #include "../common/randdp.h"
-#line 43
 #include "../common/randdp.h"
-#pragma endinclude
-#line 44
-#pragma startinclude #include "../common/timers.h"
-#line 44
 #include "../common/timers.h"
-#pragma endinclude
-#line 45
-#pragma startinclude #include "../common/print_results.h"
-#line 45
 #include "../common/print_results.h"
-#pragma endinclude
-#line 46
 
 
 static void setup(int *n1, int *n2, int *n3);

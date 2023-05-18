@@ -167,13 +167,17 @@ public class Driver {
                 "normalize-loops",
                 "Normalize for loops so they begin at 0 and have a step of 1");
 
-        String parserLibs = libs;
-        System.out.println("PARSER LIBS: " + parserLibs);
-        String parserLibsCommand = " -I " + parserLibs;
+        String parserLibsCommand = "";
+        String[] libsList = libs.split(";");
+        for (String lib : libsList) {
+            parserLibsCommand += "-I" + lib + " ";
+        }
+        System.out.println("PARSER LIBS: " + parserLibsCommand);
+
         if ((System.getProperty("os.name").toLowerCase()).indexOf("win") >= 0)
             options.add(options.UTILITY,
                     "preprocessor",
-                    "cpp.exe" + parserLibsCommand,
+                    "cpp.exe " + parserLibsCommand,
                     "command",
                     "Set the preprocessor command to use");
         else
@@ -357,7 +361,7 @@ public class Driver {
         options.add(options.TRANSFORM,
                 "loop-tiling",
                 "To apply loop tiling. Not fully implemented yet");
-        
+
         options.add(options.ANALYSIS,
                 "DataMining-analysis",
                 "To apply the search engine.");

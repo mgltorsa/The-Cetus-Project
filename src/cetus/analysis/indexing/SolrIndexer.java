@@ -124,20 +124,6 @@ public class SolrIndexer extends AnalysisPass {
 
         doc.addField("filename", dataRaw.getFilename());
 
-<<<<<<< HEAD
-        if (dataRaw.getValue().toString() == null || dataRaw.getValue().toString().isEmpty()) {
-            System.out.println("NULL CONTENT = " + dataRaw.getLineCode() + " - " + dataRaw.getColumnCode());
-            System.out.println("NULL CONTENT 2 = " + dataRaw.getParent());
-
-        }else{
-            System.out.println("Content "+ dataRaw.getValue());
-
-        }
-
-        doc.addField("content", dataRaw.getValue().toString());
-
-=======
->>>>>>> 3a8ee50ce9eb42947fd2f023df928215a16a7aee
         if (dataRaw.getLineCode() != null) {
             doc.addField("linecode", dataRaw.getLineCode());
         }

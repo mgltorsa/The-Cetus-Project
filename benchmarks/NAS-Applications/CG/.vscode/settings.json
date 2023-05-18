@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "randdp.h": "c",
+        "print_results.h": "c",
+        "timers.h": "c",
+        "globals.h": "c"
+    }
+}
