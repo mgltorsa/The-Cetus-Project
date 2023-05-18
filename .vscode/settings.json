@@ -5,7 +5,8 @@
         "stdio.h": "c",
         "random": "c",
         "math.h": "c",
-        "omp.h": "c"
+        "omp.h": "c",
+        "stdlib.h": "c"
     },
     "java.project.referencedLibraries": [
         "lib/**/*.jar",

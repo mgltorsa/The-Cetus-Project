@@ -8,7 +8,7 @@ import cetus.hir.Traversable;
 public class DataRaw {
 
     private int id;
-    private Traversable parent;
+    private DataRaw parent;
     private Traversable value;
     private String typeValue;
     private List<Traversable> children;
@@ -21,47 +21,32 @@ public class DataRaw {
         return columnCode;
     }
 
-
-
     public void setColumnCode(String columnCode) {
         this.columnCode = columnCode;
     }
 
-
-
-    public void setParent(Traversable parent) {
+    public void setParent(DataRaw parent) {
         this.parent = parent;
     }
-
-
 
     public void setFilename(String filename) {
         this.filename = filename;
     }
 
-
-
-    public Traversable getParent() {
+    public DataRaw getParent() {
         return parent;
     }
-
-
 
     public String getFilename() {
         return filename;
     }
 
-
-
-    public DataRaw(int id, Traversable parent, Traversable value, String typeValue, List<Traversable> children) {
+    public DataRaw(int id, Traversable value, String typeValue, List<Traversable> children) {
         this.id = id;
-        this.parent = parent;
         this.value = value;
         this.typeValue = typeValue;
         this.children = children;
     }
-
-    
 
     public List<Traversable> getChildren() {
         return children;
@@ -79,11 +64,11 @@ public class DataRaw {
         this.id = id;
     }
 
-    public Traversable getparent() {
+    public DataRaw getparent() {
         return parent;
     }
 
-    public void setgetparent(Traversable parent) {
+    public void setgetparent(DataRaw parent) {
         this.parent = parent;
     }
 

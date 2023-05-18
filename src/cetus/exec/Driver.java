@@ -164,16 +164,20 @@ public class Driver {
         options.add(options.TRANSFORM,
                 "normalize-loops",
                 "Normalize for loops so they begin at 0 and have a step of 1");
+
+        String parserLibs = "C:/opt/NPB3.3-SER-C/CG/";
+        System.out.println("PARSER LIBS: " + parserLibs);
+        String parserLibsCommand = " -I " + parserLibs;
         if ((System.getProperty("os.name").toLowerCase()).indexOf("win") >= 0)
             options.add(options.UTILITY,
                     "preprocessor",
-                    "cpp.exe -E",
+                    "cpp.exe" + parserLibsCommand,
                     "command",
                     "Set the preprocessor command to use");
         else
             options.add(options.UTILITY,
                     "preprocessor",
-                    "cpp -C -I.",
+                    "cpp -C -I. " + parserLibsCommand,
                     "command",
                     "Set the preprocessor command to use");
         options.add(options.ANALYSIS,
