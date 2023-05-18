@@ -32,9 +32,11 @@ the ant tools (see property name="antlr").
   <!-- Antlr directory - MODIFY THIS VARIABLE FOR YOUR ENVIRONMENT!!! -->
   <property name="antlr" value="${cetusdir}/lib/antlr.jar" />
 
+  <property name="ivylibs" value="C:/Users/Migue/.ivy2/cache" />
+
   <!-- Classpath -->
   <property name="classpath"
-    value="${classdir}:${antlr}:${jardir}/junit.jar:${jardir}/rsyntaxtextarea.jar" />
+    value="${classdir}:${antlr}:${jardir}/junit.jar:${jardir}/rsyntaxtextarea.jar:${ivylibs}/org.apache.solr/solr-solrj/jars/solr-solrj-9.2.0.jar:" />
 
   <!-- Conditional property that checks if the parser is available -->
   <condition property="parser.exists">

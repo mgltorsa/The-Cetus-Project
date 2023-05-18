@@ -13,7 +13,10 @@ import java.util.logging.FileHandler;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+<<<<<<< HEAD
+=======
 
+>>>>>>> 3a8ee50ce9eb42947fd2f023df928215a16a7aee
 import cetus.entities.DataRaw;
 import cetus.hir.AccessExpression;
 import cetus.hir.ArrayAccess;
@@ -125,13 +128,10 @@ public class DataMining extends AnalysisPass {
 		setLogger();
 		elementId = 0;
 		listDataMining = new ArrayList<DataRaw>();
-		/* loops_Features = new ArrayList<AnalysisLoopTarget>(); */
+
 		logger.info("Value, DataType ");
 
-		/*
-		 * startAnalysis(program, ((TranslationUnit)
-		 * program.getChildren().get(0)).getOutputFilename());
-		 */
+
 	}
 
 	public String getPassName() {
@@ -143,18 +143,6 @@ public class DataMining extends AnalysisPass {
 	public void start() {
 		DataRaw originDatRaw = getDataRaw(program, null, tryGetFilename(program, null));
 		analysisProgram(originDatRaw, null);
-	}
-	/*
-	 * public void startAnalysis(Program program, String fileName) {
-	 * analysisProgram(program);
-	 * System.out.println("Done");
-	 * }
-	 */
-
-	public void exportInformation(String information, String type) {
-
-		logger.info(information + "," + type);
-
 	}
 
 	public String tryGetFilename(Traversable traversable, String defaultFilename) {
@@ -185,11 +173,23 @@ public class DataMining extends AnalysisPass {
 			col_in_code = col + "";
 		}
 
+<<<<<<< HEAD
+		if (program instanceof Statement) {
+			Statement stm = (Statement) program;
+			if (stm.where() != 0) {
+				line_in_code = "" + stm.where();
+			}
+		}
+
+		if (program.toString().isBlank()) {
+			return;
+=======
 		if (traversable instanceof Statement) {
 			Statement st = ((Statement) traversable);
 			if (st.where() != 0) {
 				line_in_code = "" + st.where();
 			}
+>>>>>>> 3a8ee50ce9eb42947fd2f023df928215a16a7aee
 		}
 
 		DataRaw datainfo = new DataRaw(elementId, traversable, typeElement, childrenElement);

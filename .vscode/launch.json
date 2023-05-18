@@ -28,8 +28,13 @@
             "name": "Launch Driver",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
+<<<<<<< HEAD
+            "args": "C:/Users/Migue/OneDrive/Escritorio/SNU_NPB-1.0.3/NPB3.3-SER-C/MG/mg.c"
+        },
+=======
             "args": "C:/opt/NPB3.3-SER-C/CG/cg.c"
         },  
+>>>>>>> 3a8ee50ce9eb42947fd2f023df928215a16a7aee
         {
             "type": "java",
             "name": "Launch Current File",

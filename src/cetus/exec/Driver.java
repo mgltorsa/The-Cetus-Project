@@ -357,6 +357,10 @@ public class Driver {
         options.add(options.TRANSFORM,
                 "loop-tiling",
                 "To apply loop tiling. Not fully implemented yet");
+        
+        options.add(options.ANALYSIS,
+                "DataMining-analysis",
+                "To apply the search engine.");
 
         options.add(options.TRANSFORM,
                 ParallelAwareTilingPass.PAW_TILING,
@@ -815,80 +819,81 @@ public class Driver {
         PrintTools.printlnStatus("[Driver] print all options :\n" + options.dumpOptions(), 4);
         System.out.println(program);
 
-        // if (getOptionValue("DataMining-analysis") != null) {
+        if (getOptionValue("DataMining-analysis") != null) {
 
-        AnalysisPass.run(new SolrIndexer(program));
+            AnalysisPass.run(new SolrIndexer(program));
 
-        // }
-        if (getOptionValue("teliminate-branch") != null && !getOptionValue("teliminate-branch").equals("0")) {
-            TransformPass.run(new BranchEliminator(program));
-        }
-        if (getOptionValue("callgraph") != null) {
-            CallGraph cg = new CallGraph(program);
-            cg.print(System.out);
-        }
+        } else {
+            if (getOptionValue("teliminate-branch") != null && !getOptionValue("teliminate-branch").equals("0")) {
+                TransformPass.run(new BranchEliminator(program));
+            }
+            if (getOptionValue("callgraph") != null) {
+                CallGraph cg = new CallGraph(program);
+                cg.print(System.out);
+            }
 
-        if (getOptionValue("tsingle-declarator") != null) {
-            TransformPass.run(new SingleDeclarator(program));
-        }
-        if (getOptionValue("tsingle-call") != null) {
-            TransformPass.run(new SingleCall(program));
-        }
-        if (getOptionValue("tsingle-return") != null) {
-            TransformPass.run(new SingleReturn(program));
-        }
-        if (getOptionValue("tinline") != null) {
-            TransformPass.run(new InlineExpansionPass(program));
-        }
-        if (getOptionValue("normalize-loops") != null) {
-            TransformPass.run(new LoopNormalization(program));
-        }
-        if (getOptionValue("normalize-return-stmt") != null) {
-            TransformPass.run(new NormalizeReturn(program));
-        }
-        if (getOptionValue("induction") != null && !getOptionValue("induction").equals("0")) {
-            TransformPass.run(new IVSubstitution(program));
-        }
+            if (getOptionValue("tsingle-declarator") != null) {
+                TransformPass.run(new SingleDeclarator(program));
+            }
+            if (getOptionValue("tsingle-call") != null) {
+                TransformPass.run(new SingleCall(program));
+            }
+            if (getOptionValue("tsingle-return") != null) {
+                TransformPass.run(new SingleReturn(program));
+            }
+            if (getOptionValue("tinline") != null) {
+                TransformPass.run(new InlineExpansionPass(program));
+            }
+            if (getOptionValue("normalize-loops") != null) {
+                TransformPass.run(new LoopNormalization(program));
+            }
+            if (getOptionValue("normalize-return-stmt") != null) {
+                TransformPass.run(new NormalizeReturn(program));
+            }
+            if (getOptionValue("induction") != null && !getOptionValue("induction").equals("0")) {
+                TransformPass.run(new IVSubstitution(program));
+            }
 
-        if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
-            AnalysisPass.run(new DDTDriver(program));
-        }
+            if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
+                AnalysisPass.run(new DDTDriver(program));
+            }
 
-        if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
-            AnalysisPass.run(new ArrayPrivatization(program));
-        }
+            if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
+                AnalysisPass.run(new ArrayPrivatization(program));
+            }
 
-        if (getOptionValue("reduction") != null && !getOptionValue("reduction").equals("0")) {
-            AnalysisPass.run(new Reduction(program));
-        }
-        /*
-         * if (getOptionValue("openmp") != null) {
-         * AnalysisPass.run(new OmpAnalysis(program));
-         * }
-         * 
-         */
+            if (getOptionValue("reduction") != null && !getOptionValue("reduction").equals("0")) {
+                AnalysisPass.run(new Reduction(program));
+            }
+            /*
+             * if (getOptionValue("openmp") != null) {
+             * AnalysisPass.run(new OmpAnalysis(program));
+             * }
+             * 
+             */
 
-        if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
-            AnalysisPass.run(new LoopParallelizationPass(program));
-        }
-        if (getOptionValue("ompGen") != null && !getOptionValue("ompGen").equals("0")) {
-            CodeGenPass.run(new ompGen(program));
-        }
+            if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
+                AnalysisPass.run(new LoopParallelizationPass(program));
+            }
+            if (getOptionValue("ompGen") != null && !getOptionValue("ompGen").equals("0")) {
+                CodeGenPass.run(new ompGen(program));
+            }
 
-        if (getOptionValue("loop-tiling") != null) {
-            TransformPass.run(new LoopTiling(program, options));
-        }
+            if (getOptionValue("loop-tiling") != null) {
+                TransformPass.run(new LoopTiling(program, options));
+            }
 
-        if (getOptionValue("profile-loops") != null) {
-            TransformPass.run(new LoopProfiler(program));
-        }
+            if (getOptionValue("profile-loops") != null) {
+                TransformPass.run(new LoopProfiler(program));
+            }
 
-        if (getOptionValue("loop_interchange") != null) {
-            TransformPass.run(new LoopInterchange(program));
-        }
+            if (getOptionValue("loop_interchange") != null) {
+                TransformPass.run(new LoopInterchange(program));
+            }
 
-        if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
-            TransformPass.run(new ParallelAwareTilingPass(program, options));
+            if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
+                TransformPass.run(new ParallelAwareTilingPass(program, options));
+            }
         }
 
     }

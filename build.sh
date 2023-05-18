@@ -52,7 +52,7 @@ case "$1" in
   echo "Compiling the source files..."
   [ -f $PARSER/NewCParser.java ] || $0 parser
   [ -d class ] || mkdir class
-  javac -g -cp $PWD/lib/junit.jar:$PWD/lib/rsyntaxtextarea.jar:$ANTLR:class -d class $SRC
+  javac -g -cp $PWD/lib/junit.jar:$PWD/lib/rsyntaxtextarea.jar:C:/Users/Migue/.ivy2/cache/org.apache.solr/solr-solrj/jars/solr-solrj-9.2.0.jar:$ANTLR:class -d class $SRC
   ;;
   jar)
   $0 compile

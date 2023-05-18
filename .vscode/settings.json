@@ -10,6 +10,6 @@
     },
     "java.project.referencedLibraries": [
         "lib/**/*.jar",
-        "C:/Users/josee/.ivy2/**/*.jar",
+        "C:/Users/Migue/.ivy2/**/*.jar",
     ]
 }
