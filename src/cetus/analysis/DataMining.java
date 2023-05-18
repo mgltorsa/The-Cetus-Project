@@ -13,10 +13,6 @@ import java.util.logging.FileHandler;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-<<<<<<< HEAD
-=======
-
->>>>>>> 3a8ee50ce9eb42947fd2f023df928215a16a7aee
 import cetus.entities.DataRaw;
 import cetus.hir.AccessExpression;
 import cetus.hir.ArrayAccess;
@@ -125,7 +121,7 @@ public class DataMining extends AnalysisPass {
 
 	public DataMining(Program program) {
 		super(program);
-		setLogger();
+		/* setLogger(); */
 		elementId = 0;
 		listDataMining = new ArrayList<DataRaw>();
 
@@ -338,7 +334,7 @@ public class DataMining extends AnalysisPass {
 
 	}
 
-	private void setLogger() {
+	/* private void setLogger() {
 
 		FileHandler handler;
 		try {
@@ -358,7 +354,7 @@ public class DataMining extends AnalysisPass {
 		} catch (SecurityException | IOException e) {
 			e.printStackTrace();
 		}
-	}
+	} */
 
 	// Miguel Added
 	public void exportInfor(Map<String, String> loopAnalysis) {
