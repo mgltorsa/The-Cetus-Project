@@ -6,7 +6,7 @@
             "name": "Launch Driver",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "./resources/examples/tiling/MatrixVectorMultiplication/NonTiled.c"
+            "args": "C:/Users/Migue/OneDrive/Escritorio/SNU_NPB-1.0.3/NPB3.3-SER-C/MG/mg.c"
         },
         {
             "type": "java",

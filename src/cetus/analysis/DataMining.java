@@ -3,32 +3,20 @@ package cetus.analysis;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.DecimalFormat;
-import java.text.ParseException;
+
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
-import java.util.TreeMap;
+
 import java.util.logging.FileHandler;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import org.hamcrest.core.IsInstanceOf;
-import cetus.codegen.ProfitableOMP;
 import cetus.entities.DataRaw;
-import cetus.exec.Driver;
 import cetus.hir.AccessExpression;
-import cetus.hir.AccessSymbol;
 import cetus.hir.ArrayAccess;
-import cetus.hir.ArraySpecifier;
 import cetus.hir.AssignmentExpression;
 import cetus.hir.AssignmentOperator;
 import cetus.hir.BinaryExpression;
@@ -153,13 +141,10 @@ public class DataMining extends AnalysisPass {
 		setLogger();
 		elementId = 0;
 		listDataMining = new ArrayList<DataRaw>();
-		/* loops_Features = new ArrayList<AnalysisLoopTarget>(); */
+
 		logger.info("Value, DataType ");
 
-		/*
-		 * startAnalysis(program, ((TranslationUnit)
-		 * program.getChildren().get(0)).getOutputFilename());
-		 */
+
 	}
 
 	public String getPassName() {
@@ -170,18 +155,6 @@ public class DataMining extends AnalysisPass {
 	@Override
 	public void start() {
 		analysisProgram(program);
-	}
-	/*
-	 * public void startAnalysis(Program program, String fileName) {
-	 * analysisProgram(program);
-	 * System.out.println("Done");
-	 * }
-	 */
-
-	public void exportInformation(String information, String type) {
-
-		logger.info(information + "," + type);
-
 	}
 
 	public void analysisProgram(Traversable program) {
@@ -210,13 +183,20 @@ public class DataMining extends AnalysisPass {
 		int col = program.getColumn();
 		int row = program.getLine();
 
-		if (col == 0 && row == 0) {
+		if (col != 0 && row != 0) {
 			line_in_code = row + "";
 			col_in_code = col + "";
 		}
 
 		if (program instanceof Statement) {
-			line_in_code = "" + ((Statement) program).where();
+			Statement stm = (Statement) program;
+			if (stm.where() != 0) {
+				line_in_code = "" + stm.where();
+			}
+		}
+
+		if (program.toString().isBlank()) {
+			return;
 		}
 
 		DataRaw datainfo = new DataRaw(elementId, program.getParent(), program, typeElement, childrenElement);
