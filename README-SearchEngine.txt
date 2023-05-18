@@ -9,7 +9,16 @@ Instructions for a Windows Operation System
 3- Once Solr has been install and well configured in your device, run the solr server using the following command in your terminal "solr start" If the system does not reconize the command, please go to step number 2 to obtain assitance of how to configure Solr in your computer.
 
 
-2) CETUS SOURCE TO SOURCE COMPILER INFRASTRUCTURE
+2) Install Ant and ivy
+
+1- Go to this website "https://ant.apache.org/ivy/" and install Ivy. Read the documentation and configure Ivy in your computer.
+2- Go to this website "https://ant.apache.org" and install Ant. Read the documentation and configure Ant in your computer.
+
+Note: Make sure these two libraries are wel configured in you worksapce, otherwise the project will not be able to run.
+
+
+
+3) CETUS SOURCE TO SOURCE COMPILER INFRASTRUCTURE
 
 1-Download the Cetus source to source compiler infracstructure, go to this github
 repository and download the file https://github.com/mgltorsa/The-Cetus-Project/tree/data-minning.
@@ -24,7 +33,7 @@ to use the search engine. Once this step is completed, all the elements in the p
 
 
 
-3) Running the Search Engine System
+4) Running the Search Engine System
 
 1) Once Solr is running succesfully, go to http://localhost:8983/solr/#/
 2) Go to "Core Admin" which is in the left hand side of the screen
