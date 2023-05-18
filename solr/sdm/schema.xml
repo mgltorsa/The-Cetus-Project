@@ -2,45 +2,69 @@
 <!-- Solr managed schema - automatically generated - DO NOT EDIT -->
 <schema name="c-code" version="1.6">
   <uniqueKey>id</uniqueKey>
-  <fieldType name="booleans" class="solr.BoolField" />
-  <fieldType name="long" class="solr.LongPointField" />
-  <fieldType name="text_c" class="solr.TextField" positionIncrementGap="100" indexed="true">
+  <fieldType name="_text_" class="solr.TextField" positionIncrementGap="100">
     <analyzer type="index">
-      <!-- <tokenizer class="solr.PatternTokenizerFactory" pattern="[;\t\r\n]" group="-1" /> -->
-      <tokenizer class="solr.WhitespaceTokenizerFactory" />
+      <tokenizer class="solr.PatternTokenizerFactory" pattern="[;\s(){}]" group="-1" />
       <filter class="solr.LowerCaseFilterFactory" />
       <filter class="solr.ASCIIFoldingFilterFactory" />
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="15" />
       <filter class="solr.RemoveDuplicatesTokenFilterFactory" />
       <filter class="solr.SynonymGraphFilterFactory" synonyms="synonymous.txt" />
       <filter class="solr.FlattenGraphFilterFactory" />
-      <filter class="solr.EdgeNGramFilterFactory" maxGramSize="15" minGramSize="2" />
     </analyzer>
     <analyzer type="query">
       <tokenizer class="solr.WhitespaceTokenizerFactory" />
       <filter class="solr.LowerCaseFilterFactory" />
       <filter class="solr.ASCIIFoldingFilterFactory" />
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="15" />
+    </analyzer>
+  </fieldType>
+  <fieldType name="booleans" class="solr.BoolField" />
+  <fieldType name="long" class="solr.LongPointField" />
+  <fieldType name="text_c" class="solr.TextField" indexed="true" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.PatternTokenizerFactory" pattern="[;\s(){}]" group="-1" />
+      <filter class="solr.LowerCaseFilterFactory" />
+      <filter class="solr.ASCIIFoldingFilterFactory" />
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="15" />
+      <filter class="solr.RemoveDuplicatesTokenFilterFactory" />
+      <filter class="solr.SynonymGraphFilterFactory" synonyms="synonymous.txt" />
+      <filter class="solr.FlattenGraphFilterFactory" />
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.WhitespaceTokenizerFactory" />
+      <filter class="solr.LowerCaseFilterFactory" />
+      <filter class="solr.ASCIIFoldingFilterFactory" />
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="15" />
     </analyzer>
   </fieldType>
   <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100" />
-  <fieldType name="text_list" class="solr.TextField" positionIncrementGap="100" indexed="true">
+  <fieldType name="text_list" class="solr.TextField" indexed="true" positionIncrementGap="100">
     <analyzer type="index">
       <tokenizer class="solr.PatternTokenizerFactory" pattern="[; ]" group="-1" />
       <filter class="solr.LowerCaseFilterFactory" />
       <filter class="solr.ASCIIFoldingFilterFactory" />
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="15" />
     </analyzer>
     <analyzer type="query">
       <tokenizer class="solr.WhitespaceTokenizerFactory" />
       <filter class="solr.LowerCaseFilterFactory" />
       <filter class="solr.ASCIIFoldingFilterFactory" />
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="15" />
     </analyzer>
   </fieldType>
   <fieldType name="uuid" class="solr.UUIDField" indexed="true" />
-  <field name="_text_" type="text_general" uninvertible="false" indexed="false" stored="false" />
+  <field name="_text_" type="_text_" indexed="true" termOffsets="false" stored="false"
+    uninvertible="false" termPayloads="false" termPositions="false" docValues="false"
+    termVectors="false" multiValued="true" />
   <field name="_version_" type="long" multiValued="false" indexed="true" stored="true" />
   <field name="columncode" type="long" indexed="false" required="false" stored="true" />
-  <field name="constructs" type="text_list" indexed="true" required="false" stored="true" />
-  <field name="content" type="text_c" indexed="true" required="true" stored="true" />
-  <field name="datatypes" type="text_list" indexed="true" required="false" stored="true" />
+  <field name="constructs" type="text_list" uninvertible="false" indexed="true" required="false"
+    stored="true" />
+  <field name="content" type="text_c" uninvertible="false" indexed="true" required="true"
+    stored="true" />
+  <field name="datatypes" type="text_list" uninvertible="false" indexed="true" required="false"
+    stored="true" />
   <field name="filename" type="text_general" indexed="false" required="false" stored="true" />
   <field name="id" type="uuid" indexed="true" required="true" stored="true" />
   <field name="linecode" type="long" indexed="false" required="false" stored="true" />
