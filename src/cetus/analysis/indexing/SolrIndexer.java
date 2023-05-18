@@ -107,12 +107,25 @@ public class SolrIndexer extends AnalysisPass {
                 .collect(Collectors.toList());
     }
 
+    private String cleanContent(String content) {
+        return content.replaceAll("\r\n", " ")
+                .replaceAll("\n", " ")
+                .replaceAll("\t", " ")
+                // .replaceAll("+", " + ")
+                // .replaceAll("-", " - ")
+                // .replaceAll("*", " * ")
+                // .replaceAll("/", " / ")
+                // .replaceAll("(", " ( ")
+                // .replaceAll(")", " ) ")
+                // .replaceAll("{", " { ")
+                // .replaceAll("}", " } ")
+                .replaceAll(",", " , ");
+    }
+
     private SolrInputDocument mapLoopToDocument(DataRaw dataRaw) {
         SolrInputDocument doc = new SolrInputDocument();
 
         doc.addField("filename", dataRaw.getFilename());
-
-        doc.addField("content", dataRaw.getValue().toString());
 
         if (dataRaw.getLineCode() != null) {
             doc.addField("linecode", dataRaw.getLineCode());
@@ -140,9 +153,22 @@ public class SolrIndexer extends AnalysisPass {
 
         doc.addField("parent_id", parentId);
 
+        String constructs = dataRaw.getTypeValue();
+        String dataTypes = dataRaw.getTypeValue();
+        String content = cleanContent(dataRaw.getValue().toString());
+        String _text_ = new StringBuilder()
+                .append(content)
+                .append("\n")
+                .append(constructs)
+                .append("\n")
+                .append(dataTypes)
+                .toString();
+
+        doc.addField("content", cleanContent(dataRaw.getValue().toString()));
+
         doc.addField("constructs", dataRaw.getTypeValue());
         doc.addField("datatypes", dataRaw.getTypeValue().replaceAll(";", " "));
-
+        doc.addField("_text_", _text_);
         return doc;
     }
 
