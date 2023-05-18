@@ -3,3 +3,4 @@ cetus_output
 /out
 /cbin
 /solr/sdm/data/**
+class/**

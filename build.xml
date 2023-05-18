@@ -32,7 +32,7 @@ the ant tools (see property name="antlr").
   <!-- Antlr directory - MODIFY THIS VARIABLE FOR YOUR ENVIRONMENT!!! -->
   <property name="antlr" value="${cetusdir}/lib/antlr.jar" />
 
-  <property name="ivylibs" value="C:/Users/Migue/.ivy2/cache" />
+  <property name="ivylibs" value="%IVY_PATH%/cache" />
 
   <!-- Classpath -->
   <property name="classpath"
@@ -131,7 +131,7 @@ the ant tools (see property name="antlr").
     <mkdir dir="${bindir}" />
     <echo file="${bindir}/cetus">#!/bin/sh
       # This file was generated automatically by ant.
-      java -cp ${antlr}:${jardir}/cetus.jar:${jardir}/rsyntaxtextarea.jar -Xmx1g cetus.exec.Driver
+      java -cp ${antlr}:${jardir}/cetus.jar:${jardir}/rsyntaxtextarea.jar:${ivylibs}/org.apache.solr/solr-solrj/jars/solr-solrj-9.2.0.jar: -Xmx1g cetus.exec.Driver
       $*
     </echo>
     <chmod file="${bindir}/cetus" perm="755" />
