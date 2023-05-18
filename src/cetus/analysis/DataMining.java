@@ -121,7 +121,7 @@ public class DataMining extends AnalysisPass {
 
 	public DataMining(Program program) {
 		super(program);
-		setLogger();
+		/* setLogger(); */
 		elementId = 0;
 		listDataMining = new ArrayList<DataRaw>();
 
@@ -333,7 +333,7 @@ public class DataMining extends AnalysisPass {
 
 	}
 
-	private void setLogger() {
+	/* private void setLogger() {
 
 		FileHandler handler;
 		try {
@@ -353,7 +353,7 @@ public class DataMining extends AnalysisPass {
 		} catch (SecurityException | IOException e) {
 			e.printStackTrace();
 		}
-	}
+	} */
 
 	// Miguel Added
 	public void exportInfor(Map<String, String> loopAnalysis) {

@@ -2,7 +2,14 @@ README
 
 Instructions for a Windows Operation System
 
-1) CETUS SOURCE TO SOURCE COMPILER INFRASTRUCTURE
+1) SOLR Installation
+
+1- Install Solr, go to this webside "https://solr.apache.org/downloads.html"  to obtain assistance of how download Solr in your computer.
+2- Go to this link "https://solr.apache.org/guide/7_0/installing-solr.html" to obtain assistance of how to intall Solr in your computer.
+3- Once Solr has been install and well configured in your device, run the solr server using the following command in your terminal "solr start" If the system does not reconize the command, please go to step number 2 to obtain assitance of how to configure Solr in your computer.
+
+
+2) CETUS SOURCE TO SOURCE COMPILER INFRASTRUCTURE
 
 1-Download the Cetus source to source compiler infracstructure, go to this github
 repository and download the file https://github.com/mgltorsa/The-Cetus-Project/tree/data-minning.
@@ -15,11 +22,6 @@ repository and download the file https://github.com/mgltorsa/The-Cetus-Project/t
 to use the search engine. Once this step is completed, all the elements in the program will be already inside of Solr.
 
 
-2) SOLR Installation
-
-1- Install Solr, go to this webside "https://solr.apache.org/downloads.html"  to obtain assistance of how download Solr in your computer.
-2- Go to this link "https://solr.apache.org/guide/7_0/installing-solr.html" to obtain assistance of how to intall Solr in your computer.
-3- Once Solr has been install and well configured in your device, run the solr server using the following command in your terminal "solr start" If the system does not reconize the command, please go to step number 2 to obtain assitance of how to configure Solr in your computer.
 
 
 3) Running the Search Engine System
