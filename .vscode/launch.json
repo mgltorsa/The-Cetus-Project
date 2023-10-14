@@ -75,7 +75,10 @@
       "name": "Launch Driver PawTiling Lv1 Jacobi example test",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-outputFile=out/logs.txt -verbosity=1 -paw-tiling=0 -tiling-level=1 ./resources/examples/JacobiExample.c"
+      "args": "-outputFile=out/logs.txt -verbosity=1 -paw-tiling=0 -tiling-level=1 ./resources/examples/JacobiExample.c",
+      "env": {
+        "OPENAI_API_KEY": "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"
+      }
     },
     {
       "type": "java",

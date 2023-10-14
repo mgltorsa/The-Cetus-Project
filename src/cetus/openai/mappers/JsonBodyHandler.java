@@ -1,6 +1,6 @@
 package cetus.openai.mappers;
 
-// import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,7 +10,6 @@ import java.util.function.Supplier;
 
 public class JsonBodyHandler<T> implements HttpResponse.BodyHandler<Supplier<T>> {
 
-    // private static final ObjectMapper om = new ObjectMapper();
     private final Class<T> targetClass;
 
     public JsonBodyHandler(Class<T> targetClass) {
@@ -33,9 +32,8 @@ public class JsonBodyHandler<T> implements HttpResponse.BodyHandler<Supplier<T>>
     public static <W> Supplier<W> toSupplierOfType(InputStream inputStream, Class<W> targetType) {
         return () -> {
             try (InputStream stream = inputStream) {
-                // ObjectMapper objectMapper = new ObjectMapper();
-                // return objectMapper.readValue(stream, targetType);
-                return null;
+                ObjectMapper objectMapper = new ObjectMapper();
+                return objectMapper.readValue(stream, targetType);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
