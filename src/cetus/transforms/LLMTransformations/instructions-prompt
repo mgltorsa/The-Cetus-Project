@@ -1,0 +1,5 @@
+Given the program below, improve its performance using OpenMP.
+#### Program:
+{{src-code}}
+
+#### Full optimized version:

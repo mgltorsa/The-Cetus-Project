@@ -15,9 +15,11 @@ int main(){
     sum = sum + a[i];
   }
 
+  #pragma experimental llm_opt start
   for (i=1; i<n; i++) {
     sum = sum + a[i];
   }
+  #pragma experimental llm_opt stop
 
 
 	
