@@ -6,38 +6,59 @@
 # Specify the location of the antlr.jar file for your system.
 ANTLR="$PWD/lib/antlr.jar"            #antlr location
 #please put antlr.jar under lib/
-#otherwise you must change the path here 
+#otherwise you must change the path here
 #and modify MANIFEST-ADD.MF to make sure the path of antlr.jar
 #is relative to cetus.jar
 
 if [ -z "$ANTLR" ]; then
-  echo "Please define ANTLR in $0"
-  exit 1
+    echo "Please define ANTLR in $0"
+    exit 1
 fi
 
 # Check for java/javac/jar.
 for tool in java javac jar; do
-  which $tool >/dev/null
-  if [ $? -ne 0 ]; then
-    echo $tool is not found.
-    exit 1
-  fi
+    which $tool >/dev/null
+    if [ $? -ne 0 ]; then
+        echo $tool is not found.
+        exit 1
+    fi
 done
 
 # No change is required for these variables.
 CETUSROOT=$PWD
 SRC="$CETUSROOT/src/*/*/*.java $CETUSROOT/src/*/*/*/*.java"
+
+find_java_files() {
+    local dir="$1"
+    find "$dir" -name '*.java' -type f
+}
+
+# Function to find all JAR files recursively
+find_jar_files() {
+    local dir="$1"
+    find "$dir" -name '*.jar' -type f
+}
+
+# Find all Java files in the project directory
+SRC=$(find_java_files "$CETUSROOT/src")
+
 PARSER="$CETUSROOT/src/cetus/base/grammars"
 # Source files for parser construction.
 parser_src="
-  CetusCParser.java
-  CToken.java
-  LineObject.java
-  NewCParser.g
-  Pragma.java
-  Pre.g
-  PreprocessorInfoChannel.java
+CetusCParser.java
+CToken.java
+LineObject.java
+NewCParser.g
+Pragma.java
+Pre.g
+PreprocessorInfoChannel.java
 "
+
+CLASSPATH="$ANTLR/class"
+
+for jar in $PWD/lib/*.jar; do
+    CLASSPATH="$CLASSPATH:$jar"
+done
 
 case "$1" in
   parser)
@@ -52,7 +73,7 @@ case "$1" in
   echo "Compiling the source files..."
   [ -f $PARSER/NewCParser.java ] || $0 parser
   [ -d class ] || mkdir class
-  javac -g -cp $PWD/lib/junit.jar:$PWD/lib/rsyntaxtextarea.jar:$ANTLR:class -d class $SRC
+  javac -source 1.8 -target 1.8 -g -cp $CLASSPATH -d class $SRC
   ;;
   jar)
   $0 compile

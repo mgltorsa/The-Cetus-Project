@@ -164,10 +164,14 @@ public class Driver {
         options.add(options.TRANSFORM,
                 LLMOptimizationPass.PASS_CMD_OPTION,
                 LLMOptimizationPass.DESCRIPTION);
+
+        options.add(options.UTILITY,
+                LLMOptimizationPass.PASS_TEMPERATURE_CMD_OPTION,
+                LLMOptimizationPass.PASS_TEMPERATURE_CMD_DESCRIPTION);
         if ((System.getProperty("os.name").toLowerCase()).indexOf("win") >= 0)
             options.add(options.UTILITY,
                     "preprocessor",
-                    "cpp-4.exe -E",
+                    "cpp.exe -E",
                     "command",
                     "Set the preprocessor command to use");
         else
@@ -616,7 +620,7 @@ public class Driver {
      */
     public void dumpOptionsFile() {
         // check for options.cetus in working directory
-        // registerOptions();
+        registerOptions();
         File optionsFile = new File("options.cetus");
         // create file options.cetus
         try {
@@ -779,6 +783,11 @@ public class Driver {
 
         PrintTools.printlnStatus("[Driver] print all options :\n" + options.dumpOptions(), 4);
 
+        if (getOptionValue(LLMOptimizationPass.PASS_CMD_OPTION) != null
+                && !getOptionValue(LLMOptimizationPass.PASS_CMD_OPTION).equals("0")) {
+            TransformPass.run(new LLMOptimizationPass(program, options));
+            return;
+        }
         if (getOptionValue("teliminate-branch") != null && !getOptionValue("teliminate-branch").equals("0")) {
             TransformPass.run(new BranchEliminator(program));
         }
@@ -825,11 +834,6 @@ public class Driver {
          * }
          * 
          */
-
-        if (getOptionValue(LLMOptimizationPass.PASS_CMD_OPTION) != null
-                && !getOptionValue(LLMOptimizationPass.PASS_CMD_OPTION).equals("0")) {
-            TransformPass.run(new LLMOptimizationPass(program));
-        }
 
         if (getOptionValue("loop_interchange") != null) {
             TransformPass.run(new LoopInterchange(program));

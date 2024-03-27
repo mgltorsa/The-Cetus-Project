@@ -123,10 +123,13 @@ public abstract class Annotation extends HashMap<String, Object> {
             return cloneCollection((Collection)obj);
         } else if (obj instanceof Map) {
             return cloneMap((Map)obj);
+        } else if (obj instanceof Expression) {
+            return ((Expression)obj).clone();
         } else if (obj == null) {
             // for some keys in the maps, values are null
             return null;
         } else {
+            
             System.err.println(
                     "unhandled Object type, fix me in Annotation.java");
             return null;

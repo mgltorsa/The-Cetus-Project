@@ -4,3 +4,7 @@ class
 cppinput**
 lib
 out
+**.env**
+.vscode/launch.json
+.vscode/**
+llm-optimizations-outputs

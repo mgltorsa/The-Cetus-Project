@@ -1,5 +1,6 @@
 package cetus.hir;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
@@ -46,7 +47,7 @@ public class CetusAnnotation extends PragmaAnnotation {
                 ;
             } else if (key.equals("firstprivate") ||
                        key.equals("lastprivate") || key.equals("private")) {
-                Set<Symbol> private_set = this.get(key);
+                Collection<Symbol> private_set = this.get(key);
                 str.append(key).append("(");
                 // NOTE: #pragma cetus private may contain different symbols
                 // sharing the same name but only one of those are printed. This
@@ -55,7 +56,7 @@ public class CetusAnnotation extends PragmaAnnotation {
                 str.append(PrintTools.collectionToString(private_set, ", "));
                 str.append(") ");
             } else if (key.equals("reduction")) {
-                Map<String, Set<Expression>> reduction_map = this.get(key);
+                Map<String, Collection<Expression>> reduction_map = this.get(key);
                 for (String op : reduction_map.keySet()) {
                     str.append("reduction(").append(op).append(": ");
                     str.append(PrintTools.collectionToString(

@@ -253,8 +253,8 @@ public class ForLoop extends Statement implements Loop, SymbolTable {
     *
     * @return the cloned for loop.
     */
-    @Override public ForLoop clone() {
-        ForLoop fl = (ForLoop)super.clone();
+    public ForLoop clone(boolean mustHaveAnnotations) {
+        ForLoop fl = (ForLoop)super.clone(mustHaveAnnotations);
         // Builds the internal look-up table.
         // There is no need for building an internal look-up table for the loop
         // in a C program (declarations are within the compound statement) but
@@ -271,6 +271,16 @@ public class ForLoop extends Statement implements Loop, SymbolTable {
         // Fixes obsolete symbol references in the IR.
         SymbolTools.relinkSymbols(fl);
         return fl;
+    }
+
+    /**
+    * Returns a clone of this for loop.
+    *
+    * @return the cloned for loop.
+    */
+    @Override
+    public ForLoop clone() {
+        return clone(true);
     }
 
     /* SymbolTable interface */
