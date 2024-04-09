@@ -31,12 +31,14 @@ import cetus.hir.DFIterator;
 import cetus.hir.Declaration;
 import cetus.hir.Declarator;
 import cetus.hir.Expression;
+import cetus.hir.FloatLiteral;
 import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
 import cetus.hir.Identifier;
 import cetus.hir.IfStatement;
 import cetus.hir.Initializer;
 import cetus.hir.IntegerLiteral;
+import cetus.hir.Literal;
 import cetus.hir.Loop;
 import cetus.hir.NameID;
 import cetus.hir.Program;
@@ -300,22 +302,27 @@ public class ParallelAwareTilingPass extends TransformPass {
 
         // create two versions if iterations isn't enough to parallelize
 
-        CompoundStatement leastCostVersionStm = new CompoundStatement();
-        leastCostVersionStm.addStatement(leastCostTiledVersion);
-
-        VariableDeclarationUtils.addNewVariableDeclarations(leastCostVersionStm,
-                filterValidDeclarations(variableDeclarations, leastCostTiledVersion));
-
         ForLoop newLoopNest = loopNest.clone(false);
 
         Expression dataMatrixSize = computeFullDataSize(loopNest);
         logger.log(Level.FINE, "DATA_FULL_SIZE_IN_KB", dataMatrixSize.toString());
 
-        Statement twoVersionsStm = createTwoVersionsStm(totalOfInstructions, cache, dataMatrixSize,
+        Expression cacheValue = cache;
+        cacheValue = VariableDeclarationUtils.getVariableDeclaredValue(
+                VariableDeclarationUtils.getVariableDeclarationSpace(loopNest), (IDExpression) cache);
+
+        Statement twoVersionsStm = createTwoVersionsStm(totalOfInstructions, cacheValue, dataMatrixSize,
                 newLoopNest,
-                leastCostVersionStm);
+                leastCostTiledVersion);
 
         replaceLoop(loopNest, twoVersionsStm);
+        Traversable targetSymbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(twoVersionsStm.getParent());
+        if (twoVersionsStm instanceof IfStatement) {
+            targetSymbolTable = ((IfStatement) twoVersionsStm).getElseStatement();
+        }
+
+        VariableDeclarationUtils.addNewVariableDeclarations(targetSymbolTable,
+                filterValidDeclarations(variableDeclarations, leastCostTiledVersion));
 
         logger.log(Level.FINE, "### Updated attributes ###");
 
@@ -346,29 +353,49 @@ public class ParallelAwareTilingPass extends TransformPass {
     }
 
     private Statement createTwoVersionsStm(Expression maxOfInstructions, Expression cache, Expression dataFullSize,
-            Statement trueClause, Statement falseClause) {
+            Statement serialCode, Statement parallelCode) {
 
         Expression instructionsCondition = new BinaryExpression(maxOfInstructions.clone(), BinaryOperator.COMPARE_LE,
                 new IntegerLiteral(MAX_ITERATIONS_TO_PARALLELIZE));
-
         Expression cacheCond = new BinaryExpression(cache.clone(), BinaryOperator.COMPARE_GT, dataFullSize.clone());
         Expression condition = new BinaryExpression(instructionsCondition.clone(), BinaryOperator.LOGICAL_AND,
                 cacheCond.clone());
 
-        IfStatement ifStm = new IfStatement(condition, trueClause, falseClause);
-        Expression exp = Symbolic.simplify(maxOfInstructions);
-        if (!(maxOfInstructions instanceof IntegerLiteral)
-                || !(cache instanceof Identifier)
-                || !(dataFullSize instanceof IntegerLiteral)) {
+        CompoundStatement leastCostVersionStm = new CompoundStatement();
+        leastCostVersionStm.addStatement(parallelCode);
+
+        IfStatement ifStm = new IfStatement(condition, serialCode, leastCostVersionStm);
+        if (!(maxOfInstructions instanceof Literal)
+                || !(cache instanceof Literal)
+                || !(dataFullSize instanceof Literal)) {
             return ifStm;
 
         } else {
-            long inst = ((IntegerLiteral) maxOfInstructions).getValue();
-            long fullSizeData = ((IntegerLiteral) dataFullSize).getValue();
-            if (inst <= MAX_ITERATIONS_TO_PARALLELIZE && cacheSize > fullSizeData) {
-                return trueClause.clone();
+            boolean isProfitableParallelIterations = false;
+            boolean isEnoughCache = false;
+            if (maxOfInstructions instanceof IntegerLiteral) {
+                long inst = ((IntegerLiteral) maxOfInstructions).getValue();
+                isProfitableParallelIterations = inst >= MAX_ITERATIONS_TO_PARALLELIZE;
+            } else if (maxOfInstructions instanceof FloatLiteral) {
+                double inst = ((FloatLiteral) maxOfInstructions).getValue();
+                isProfitableParallelIterations = inst <= MAX_ITERATIONS_TO_PARALLELIZE;
+            }
+
+            long cacheSize = ((IntegerLiteral) cache).getValue();
+
+            if (dataFullSize instanceof IntegerLiteral) {
+                long fullSizeData = ((IntegerLiteral) dataFullSize).getValue();
+                isEnoughCache = cacheSize > fullSizeData;
+
+            } else if (dataFullSize instanceof FloatLiteral) {
+                double fullSizeData = ((FloatLiteral) dataFullSize).getValue();
+                isEnoughCache = cacheSize > fullSizeData;
+
+            }
+            if (isProfitableParallelIterations && !isEnoughCache) {
+                return parallelCode.clone();
             } else {
-                return falseClause.clone();
+                return serialCode.clone();
             }
         }
     }

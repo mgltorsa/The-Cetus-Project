@@ -27,7 +27,7 @@ import cetus.utils.VariableDeclarationUtils;
 
 public class TilingUtils {
 
-    public final static String TILE_SUFFIX = "Tile";
+    public final static String TILE_SUFFIX = "b";
 
     public static Loop createInStripLoop(ForLoop loop, Expression stripExpr, Identifier newIndexVariable)
             throws Exception {

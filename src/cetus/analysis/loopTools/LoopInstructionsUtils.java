@@ -3,11 +3,16 @@ package cetus.analysis.loopTools;
 import java.util.ArrayList;
 import java.util.List;
 
+import cetus.analysis.LoopTools;
 import cetus.hir.BinaryExpression;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
+import cetus.hir.IDExpression;
 import cetus.hir.Symbolic;
+import cetus.hir.Traversable;
+import cetus.utils.VariableDeclarationUtils;
+import omp2gpu.analysis.AnalysisTools;
 
 public final class LoopInstructionsUtils {
 
@@ -21,11 +26,24 @@ public final class LoopInstructionsUtils {
         }
 
         BinaryExpression cond = (BinaryExpression) loopNestCond;
-        Expression totalOfInstructions = cond.getRHS();
+        Expression RHS = cond.getRHS();
+        Expression totalOfInstructions = RHS;
+        if (RHS instanceof IDExpression) {
+            totalOfInstructions = VariableDeclarationUtils.getVariableDeclaredValue(
+                    VariableDeclarationUtils.getVariableDeclarationSpace((Traversable) loopNest), (IDExpression) RHS);
+
+        }
         for (int i = 1; i < loops.size(); i++) {
             Expression loopCond = loops.get(i).getCondition();
             if ((loopCond instanceof BinaryExpression)) {
-                totalOfInstructions = Symbolic.multiply(totalOfInstructions, ((BinaryExpression) loopCond).getRHS());
+                RHS = ((BinaryExpression) loopCond).getRHS();
+                Expression declaredValue = RHS;
+                if (RHS instanceof IDExpression) {
+                    declaredValue = VariableDeclarationUtils.getVariableDeclaredValue(
+                            VariableDeclarationUtils.getVariableDeclarationSpace(loops.get(i)), (IDExpression) RHS);
+
+                }
+                totalOfInstructions = Symbolic.multiply(totalOfInstructions, declaredValue);
             }
         }
 

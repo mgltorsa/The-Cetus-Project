@@ -935,6 +935,15 @@ public class Driver {
         }
 
         if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
+            try{
+                TransformPass.run(new LoopInterchange(program));
+
+            }catch(Exception e){
+                if(PrintTools.getVerbosity()>1){
+                    System.err.println("ERROR EXECUTING LOOP INTERCHANGE DURING TILING");
+                    e.printStackTrace();
+                }
+            }
             TransformPass.run(new ParallelAwareTilingPass(program, options));
         }
 
