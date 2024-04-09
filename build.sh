@@ -73,7 +73,7 @@ case "$1" in
   echo "Compiling the source files..."
   [ -f $PARSER/NewCParser.java ] || $0 parser
   [ -d class ] || mkdir class
-  javac -source 1.8 -target 1.8 -g -cp $CLASSPATH -d class $SRC
+  javac -g -cp $CLASSPATH -d class $SRC
   ;;
   jar)
   $0 compile

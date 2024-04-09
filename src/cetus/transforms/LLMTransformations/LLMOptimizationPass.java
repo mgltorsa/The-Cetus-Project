@@ -1,16 +1,20 @@
 package cetus.transforms.LLMTransformations;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,6 +28,7 @@ import cetus.hir.DFIterator;
 import cetus.hir.ForLoop;
 import cetus.hir.Loop;
 import cetus.hir.PragmaAnnotation;
+import cetus.hir.PrintTools;
 import cetus.hir.Program;
 import cetus.hir.Statement;
 import cetus.hir.Symbol;
@@ -42,14 +47,26 @@ public class LLMOptimizationPass extends TransformPass {
 
     public static final String PASS_NAME = "LLM-Optimizations";
     public static final String PASS_CMD_OPTION = "llm-opt";
+    public static final String DESCRIPTION = "experimental feature to update code sections by using LLMs. Use this attribute to list the llms to use separate by comma. default: gpt-4,codellama";
+
+    public static final String PASS_FOLDER_CMD_OPTION = "llm-results-folder";
+    public static final String PASS_FOLDER_CMD_DESCRIPTION = "Select folder to put results";
+
     public static final String PASS_TEMPERATURE_CMD_OPTION = "llm-opt-temp";
-    public static final String PASS_TEMPERATURE_CMD_DESCRIPTION = "Select models temperature. 0.0, 0.1...0.7";
-    public static final String DESCRIPTION = "experimental feature to update code sections by using LLMs";
+    public static final String PASS_TEMPERATURE_CMD_DESCRIPTION = "Select models temperature. 0.0-1.0";
+
+    public static final String PASS_TOP_P_CMD_OPTION = "llm-opt-top-p";
+    public static final String PASS_TOP_P_CMD_DESCRIPTION = "Set models top_p parameter. 0.0-1.0";
+
+    public static final String PASS_PROMPTS_CMD_OPTION = "llm-prompts";
+    public static final String PASS_PROMPTS_CMD_DESCRIPTION = "Select which prompts you want to use. Default: instructions,cot";
 
     private String instructionsPrompt;
     private String cotPrompt;
 
     protected CommandLineOptionSet commandLineOptionSet;
+
+    private HashMap<String, String> optimizedCodes = new HashMap<>();
 
     public LLMOptimizationPass(Program program) {
         super(program);
@@ -58,6 +75,7 @@ public class LLMOptimizationPass extends TransformPass {
     public LLMOptimizationPass(Program program, CommandLineOptionSet options) {
         super(program);
         this.commandLineOptionSet = options;
+
     }
 
     @Override
@@ -65,12 +83,20 @@ public class LLMOptimizationPass extends TransformPass {
         return "LLM-Optimizations";
     }
 
+    private String loadPrompt(String promptFilePath) throws Exception {
+        File promptFile = new File(promptFilePath);
+        BufferedReader br = new BufferedReader(new FileReader(promptFile));
+        String prompt = "";
+        String line = null;
+        while ((line = br.readLine()) != null) {
+            prompt += line;
+        }
+        br.close();
+        return prompt;
+    }
+
     private void loadPrompts() throws Exception {
-        // BufferedReader br = new BufferedReader(new FileReader(new File("")));
-        // while (br.ready()) {
-        // prompt += br.readLine();
-        // }
-        // br.close();
+
         cotPrompt = """
                 Given the C program below, think of a way how to optimize its performance using OpenMP.
                 #### Program:
@@ -78,8 +104,9 @@ public class LLMOptimizationPass extends TransformPass {
 
                 #### Full optimized version:
                 {{mask}}
-                Summarize the ways you found in the same paragraph. Then, separately use ```c to provide the code snippets
+                Summarize the way you found in a single paragraph. Then, separately provide the code snippet of the code using ```c{{src-code}}```
                     """;
+
         instructionsPrompt = """
                 Given the C program below, improve its performance using OpenMP.
                 #### Program:
@@ -87,8 +114,15 @@ public class LLMOptimizationPass extends TransformPass {
 
                 #### Full optimized version:
                 {{mask}}
-                Only provide the code snippets, do not provide more than that. Use ```c to provide the code snippets
+                Only provide the code snippets, do not provide more than that. To provide the code snippet use ```c{{src-code}}```
                 """;
+        try {
+            cotPrompt = loadPrompt(System.getenv("CETUS_COT_PROMPT"));
+            instructionsPrompt = loadPrompt(System.getenv("CETUS_INSTRUCTIONS_PROMPT"));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
     protected LLMTargetSection getLLMTarget(Traversable t) {
@@ -150,10 +184,10 @@ public class LLMOptimizationPass extends TransformPass {
         return targetSections;
     }
 
-    protected Program parseProgram(LLMTargetSection programSection, String optimizedCode) throws Exception {
+    protected Program parseProgram(LLMTargetSection programSection, LLMTransformer transformer) throws Exception {
         // save optized code in a tempfile using buffered writer
 
-        File tempFile = File.createTempFile("tempfile", ".c");
+        File tempFile = File.createTempFile("tempfile_" + transformer.getModel(), ".c");
         // write the optimized code to the temp file
         BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile));
         // Add the variables initialization to the file
@@ -162,6 +196,13 @@ public class LLMOptimizationPass extends TransformPass {
         // the symbol table
         // If found, add the variable declaration to the file
         // If not found, add the variable declaration to the file
+
+        List<String> optimizedCodes = new ArrayList<>();
+        List<Loop> loops = extractLoops(programSection);
+        for (int i = 0; i < loops.size(); i++) {
+            String key = transformer.getModel() + "-loop_" + i;
+            optimizedCodes.add(this.optimizedCodes.get(key));
+        }
 
         Set<String> symbols = new HashSet<>();
 
@@ -194,7 +235,10 @@ public class LLMOptimizationPass extends TransformPass {
             writer.write(declaration + "\n");
         }
         writer.write("#pragma llm_optimized start\n");
-        writer.write(optimizedCode + "\n");
+        for (int i = 0; i < optimizedCodes.size(); i++) {
+            String optimizedCode = optimizedCodes.get(i);
+            writer.write(optimizedCode + "\n");
+        }
         writer.write("#pragma llm_optimized stop\n");
         writer.write("return 0;\n}\n");
         writer.close();
@@ -212,7 +256,10 @@ public class LLMOptimizationPass extends TransformPass {
             SymbolTools.linkSymbol(optimizedSectionProgram);
             // Convert the IR to a new one with improved annotation support
             TransformPass.run(new AnnotationParser(optimizedSectionProgram));
-            System.out.println(optimizedSectionProgram);
+            if (PrintTools.getVerbosity() >= 3) {
+
+                System.out.println(optimizedSectionProgram);
+            }
             return optimizedSectionProgram;
         } catch (Exception e) {
             // TODO: handle exception
@@ -225,7 +272,7 @@ public class LLMOptimizationPass extends TransformPass {
     }
 
     private String getModelFolder(String model) {
-        String newDirName = Driver.getOptionValue(PASS_CMD_OPTION);
+        String newDirName = Driver.getOptionValue(PASS_FOLDER_CMD_OPTION);
         String userDir = System.getProperty("user.dir");
         String dirStr = userDir + "/llm-optimizations-outputs/" + newDirName;
         String modelDir = dirStr + "/" + model;
@@ -265,9 +312,9 @@ public class LLMOptimizationPass extends TransformPass {
         File file = null;
 
         // Loop until a unique filename is found
-        int counter = 0;
+        int counter = 1;
         while (true) {
-            String fileName = (counter == 0) ? "code.c" : "code_" + counter + ".c";
+            String fileName = "code_" + counter + ".c";
             file = new File(optimizationDir + "/" + fileName);
 
             // Check if the file already exists
@@ -275,21 +322,24 @@ public class LLMOptimizationPass extends TransformPass {
                 try {
                     // Create the file
                     if (file.createNewFile()) {
-                        System.out.println("File created successfully: " + fileName);
+
+                        if (PrintTools.getVerbosity() >= 3) {
+                            System.out.println("File created successfully: " + fileName);
+                        }
                         BufferedWriter bw = new BufferedWriter(new FileWriter(file));
                         String code = extractCodeSnippet(llmResponse.getContent());
 
                         bw.write(code);
                         bw.close();
 
-                        String llmResponseFileName = (counter == 0) ? "response.json" : "response_" + counter + ".json";
+                        String llmResponseFileName = "response_" + counter + ".json";
                         File llmResponseFile = new File(optimizationDir + "/" + llmResponseFileName);
                         bw = new BufferedWriter(new FileWriter(llmResponseFile));
 
                         bw.write(llmResponse.toJSONString());
                         bw.close();
 
-                        String chatFilename = (counter == 0) ? "chat.txt" : "chat_" + counter + ".chat";
+                        String chatFilename = "chat_" + counter + ".txt";
                         File chatFile = new File(optimizationDir + "/" + chatFilename);
                         bw = new BufferedWriter(new FileWriter(chatFile));
 
@@ -301,6 +351,7 @@ public class LLMOptimizationPass extends TransformPass {
                         if (content == null || content.trim().isBlank() || content.trim().isEmpty()) {
                             content = "EMPTY. Check experiments";
                         }
+                        bw.write("ANSWER:\n");
                         bw.write(content + "\n");
                         bw.close();
                     } else {
@@ -374,9 +425,15 @@ public class LLMOptimizationPass extends TransformPass {
     protected void optimize(String optimizationId, String programSection, String folder, String prompt,
             LLMTransformer transformer, BasicModelParameters modelParameters) throws Exception {
 
-        LLMResponse response = transformer.transform(prompt, programSection, modelParameters);
+        try {
+            LLMResponse response = transformer.transform(prompt, programSection, modelParameters);
+            this.optimizedCodes.put(transformer.getModel() + "-" + optimizationId, response.getContent());
+            saveCode(optimizationId, folder, response);
 
-        saveCode(optimizationId, folder, response);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
     private List<Loop> extractLoops(LLMTargetSection programSection) {
@@ -392,6 +449,27 @@ public class LLMOptimizationPass extends TransformPass {
         return loops;
     }
 
+    public List<LLMTransformer> getTransformers() {
+        List<LLMTransformer> transformers = new ArrayList<>();
+
+        String transformersOptionsStr = commandLineOptionSet.getValue(PASS_CMD_OPTION);
+        if (transformersOptionsStr == null || transformersOptionsStr.isEmpty() || transformersOptionsStr.isBlank()) {
+            transformersOptionsStr = "gpt,codellama";
+        }
+
+        transformersOptionsStr = transformersOptionsStr.toLowerCase();
+
+        if (transformersOptionsStr.contains("gpt")) {
+            transformers.add(new GPTTransformer());
+        }
+
+        if (transformersOptionsStr.contains("codellama")) {
+            transformers.add(new CodeLLamaTransformer());
+        }
+
+        return transformers;
+    }
+
     private void startOptimizations() throws Exception {
         loadPrompts();
 
@@ -402,124 +480,147 @@ public class LLMOptimizationPass extends TransformPass {
             temperature = Float.parseFloat(temperatureStr);
         }
 
-        BasicModelParameters modelParameters = new BasicModelParameters(temperature);
+        String topPStr = commandLineOptionSet
+                .getValue(PASS_TOP_P_CMD_OPTION);
 
-        List<LLMTransformer> transformers = new ArrayList<>();
+        float topP = 0.1f;
+        if (topPStr != null && !topPStr.isEmpty() && !topPStr.isBlank()) {
+            topP = Float.parseFloat(topPStr);
+        }
 
-        transformers.add(new GPTTransformer());
-        transformers.add(new CodeLLamaTransformer());
+        if (PrintTools.getVerbosity() >= 2) {
+            System.out.println("TempStr: " + temperatureStr + " - top_p_str: " + topPStr + "\n");
+            System.out.println("Temp: " + temperature + " - top_p: " + topP + "\n");
+        }
+
+        BasicModelParameters modelParameters = new BasicModelParameters(temperature,
+                BasicModelParameters.MAX_NEW_TOKENS, topP);
+
+        List<LLMTransformer> transformers = getTransformers();
 
         int numThreads = 4;
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
 
-        for (LLMTransformer llmTransformer : transformers) {
-            callCodeTransformation(executorService, llmTransformer, modelParameters);
+        List<CompletableFuture<Void>> allTasks = new ArrayList<>();
+
+        try {
+
+            String temperatureSuffix = "" + (int) (modelParameters.getTemperature() * 100);
+            String topPSuffix = "" + (int) (modelParameters.getTopP() * 100);
+
+            String promptsOptionStr = commandLineOptionSet.getValue(PASS_PROMPTS_CMD_OPTION);
+            if (promptsOptionStr == null || promptsOptionStr.isEmpty() || promptsOptionStr.isBlank()) {
+                promptsOptionStr = "instructions,cot";
+            }
+
+            promptsOptionStr = promptsOptionStr.toLowerCase();
+
+            boolean shouldCot = promptsOptionStr.contains("cot");
+            boolean shouldInstruct = promptsOptionStr.contains("instructions");
+
+            List<LLMTargetSection> targetSections = getTargetSections();
+
+            for (LLMTargetSection section : targetSections) {
+
+                for (LLMTransformer transformer : transformers) {
+                    String instructionsFolder = getInstructionFolder(
+                            transformer.getModel() + "_" + temperatureSuffix + "_" + topPSuffix);
+                    String cotFolder = getCotFolder(
+                            transformer.getModel() + "_" + temperatureSuffix + "_" + topPSuffix);
+
+                    if (shouldInstruct) {
+                        List<CompletableFuture<Void>> tasksInstructions = callCodeTransformation(executorService,
+                                section,
+                                transformer,
+                                modelParameters, instructionsFolder, instructionsPrompt);
+
+                        for (CompletableFuture<Void> task : tasksInstructions) {
+                            allTasks.add(task);
+                        }
+                    }
+
+                    if (shouldCot) {
+                        List<CompletableFuture<Void>> tasksCot = callCodeTransformation(executorService, section,
+                                transformer,
+                                modelParameters, cotFolder, cotPrompt);
+
+                        for (CompletableFuture<Void> task : tasksCot) {
+                            allTasks.add(task);
+                        }
+                    }
+                }
+
+                allTasks.forEach(CompletableFuture::join);
+
+                for (LLMTransformer transformer : transformers) {
+                    Program program = parseProgram(section, transformer);
+                     
+
+                }
+
+            }
+
+            // CaRV try. The following code was made to udnerstand how one could wait for
+            // the carv process to finish
+            // CompletableFuture<Void> combinedTask = CompletableFuture
+            // .allOf(allTasks.toArray(new CompletableFuture[allTasks.size()]));
+            // try {
+            // combinedTask.get();
+
+            // } catch (InterruptedException | ExecutionException e) {
+            // e.printStackTrace();
+            // }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            executorService.shutdown();
+            executorService.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+
         }
+
     }
 
-    private void callCodeTransformation(ExecutorService threadPool, LLMTransformer transformer,
-            BasicModelParameters modelParameters) {
-
-        String temperatureSuffix = "" + (int) (modelParameters.getTemperature() * 100);
+    private List<CompletableFuture<Void>> callCodeTransformation(ExecutorService threadPool, LLMTargetSection section,
+            LLMTransformer transformer,
+            BasicModelParameters modelParameters, String folder, String prompt) {
 
         List<CompletableFuture<Void>> allTasks = new ArrayList<>();
 
-        List<LLMTargetSection> targetSections = getTargetSections();
+        CompletableFuture<Void> optimizationTask = CompletableFuture.runAsync(() -> {
+            try {
+                optimize(section.toString(),
+                        folder, prompt,
+                        transformer, modelParameters);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, threadPool);
 
-        for (LLMTargetSection section : targetSections) {
-            CompletableFuture<Void> instructionOptimizationTask = CompletableFuture.runAsync(() -> {
+        allTasks.add(optimizationTask);
+
+        List<Loop> loops = extractLoops(section);
+        for (int i = 0; i < loops.size(); i++) {
+            Loop loop = loops.get(i);
+            String loopId = "loop_" + (i + 1);
+            // String loopId = LoopTools.getLoopName((Statement) loop);
+            CompletableFuture<Void> loopByLoopOptimizationTask = CompletableFuture.runAsync(() -> {
                 try {
-                    optimize(section.toString(),
-                            getInstructionFolder(transformer.getModel() + "_" + temperatureSuffix), instructionsPrompt,
+                    optimize(loopId, loop.toString(),
+                            folder,
+                            prompt,
                             transformer, modelParameters);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }, threadPool);
 
-            try {
-                instructionOptimizationTask.get();
-            } catch (Exception e) {
-                System.out.println("FULL_OPTIMIZATION_ERROR");
-                e.printStackTrace();
-            }
-            allTasks.add(instructionOptimizationTask);
+            allTasks.add(loopByLoopOptimizationTask);
 
-            CompletableFuture<Void> cotOptimizationTask = CompletableFuture.runAsync(() -> {
-                try {
-                    optimize(section.toString(),
-                            getCotFolder(transformer.getModel() + "_" + temperatureSuffix), cotPrompt,
-                            transformer, modelParameters);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }, threadPool);
-
-            try {
-                cotOptimizationTask.get();
-            } catch (Exception e) {
-                System.out.println("FULL_OPTIMIZATION_ERROR");
-                e.printStackTrace();
-            }
-            allTasks.add(cotOptimizationTask);
-
-            List<Loop> loops = extractLoops(section);
-            for (int i = 0; i < loops.size(); i++) {
-                Loop loop = loops.get(i);
-                String loopId = "loop_" + (i + 1);
-                CompletableFuture<Void> loopByLoopInstructionTask = CompletableFuture.runAsync(() -> {
-                    try {
-                        optimize(loopId, loop.toString(),
-                                getInstructionFolder(transformer.getModel() + "_" + temperatureSuffix),
-                                instructionsPrompt,
-                                transformer, modelParameters);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }, threadPool);
-
-                try {
-                    loopByLoopInstructionTask.get();
-                } catch (Exception e) {
-                    System.out.println("LOOP_OPTIMIZATION_ERROR");
-                    e.printStackTrace();
-                }
-
-                allTasks.add(loopByLoopInstructionTask);
-
-                CompletableFuture<Void> loopByLoopCotTask = CompletableFuture.runAsync(() -> {
-                    try {
-                        optimize(loopId, loop.toString(),
-                                getCotFolder(transformer.getModel() + "_" + temperatureSuffix),
-                                cotPrompt,
-                                transformer, modelParameters);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }, threadPool);
-
-                try {
-                    loopByLoopCotTask.get();
-                } catch (Exception e) {
-                    System.out.println("LOOP_OPTIMIZATION_ERROR");
-                    e.printStackTrace();
-                }
-
-                allTasks.add(loopByLoopCotTask);
-            }
         }
 
-        // CompletableFuture<Void> combinedTask = CompletableFuture
-        // .allOf(allTasks.toArray(new CompletableFuture[allTasks.size()]));
-        // try {
-        // combinedTask.get();
+        return allTasks;
 
-        // } catch (InterruptedException | ExecutionException e) {
-        // // TODO Auto-generated catch block
-        // e.printStackTrace();
-        // } finally {
-        // executorService.shutdown();
-        // }
     }
 
     private void createFormattedExperimentalCode() {
@@ -540,7 +641,9 @@ public class LLMOptimizationPass extends TransformPass {
                         "llm-loop-target=" + LoopTools.getLoopName(loop) + " stop");
                 // endAnnotation.setOneLiner(true);
                 loop.annotateAfter(endAnnotation);
-                System.out.println(loop);
+                if (PrintTools.getVerbosity() >= 3) {
+                    System.out.println(loop);
+                }
             }
         }
 
@@ -549,6 +652,7 @@ public class LLMOptimizationPass extends TransformPass {
     @Override
     public void start() {
         try {
+            LoopTools.addLoopName(program);
             startOptimizations();
 
         } catch (Exception e) {

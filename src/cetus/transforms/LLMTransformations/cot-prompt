@@ -1,5 +1,7 @@
-Given the program below, think of a way how to optimize its performance using OpenMP.
+Given the C program below, think of a way how to optimize its performance using OpenMP.
 #### Program:
 {{src-code}}
 
 #### Full optimized version:
+{{mask}}
+Summarize the way you found in a single paragraph. Then, separately provide the code snippet of the code using ```c{{src-code}}```

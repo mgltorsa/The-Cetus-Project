@@ -168,6 +168,20 @@ public class Driver {
         options.add(options.UTILITY,
                 LLMOptimizationPass.PASS_TEMPERATURE_CMD_OPTION,
                 LLMOptimizationPass.PASS_TEMPERATURE_CMD_DESCRIPTION);
+
+
+        options.add(options.UTILITY,
+                LLMOptimizationPass.PASS_FOLDER_CMD_OPTION,
+                LLMOptimizationPass.PASS_FOLDER_CMD_DESCRIPTION);
+    
+        options.add(options.UTILITY,
+                LLMOptimizationPass.PASS_PROMPTS_CMD_OPTION,
+                LLMOptimizationPass.PASS_PROMPTS_CMD_DESCRIPTION);
+           
+        options.add(options.UTILITY,
+                LLMOptimizationPass.PASS_TOP_P_CMD_OPTION,
+                LLMOptimizationPass.PASS_TOP_P_CMD_DESCRIPTION);
+                
         if ((System.getProperty("os.name").toLowerCase()).indexOf("win") >= 0)
             options.add(options.UTILITY,
                     "preprocessor",

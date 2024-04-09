@@ -10,6 +10,8 @@ import java.net.http.HttpResponse.BodyHandlers;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import cetus.hir.PrintTools;
+
 public class CodeLLamaTransformer implements LLMTransformer {
 
     public static final String MODEL = "codellama/CodeLlama-70b-Instruct-hf";
@@ -39,14 +41,6 @@ public class CodeLLamaTransformer implements LLMTransformer {
     public LLMResponse transform(String promptTemplate, String programSection, BasicModelParameters modelParameters)
             throws Exception {
 
-        JSONObject parameters = new JSONObject();
-        parameters.put("temperature", modelParameters.getTemperature());
-        parameters.put("return_full_text", false);
-        // parameters.put("top_p", 0.8f);
-        int maxNewTokens = (programSection.length() / 3) + 200;
-        parameters.put("max_new_tokens",
-                maxNewTokens < modelParameters.getMaxNewTokens() ? maxNewTokens : modelParameters.getMaxNewTokens());
-
         String prompt = promptTemplate.replace("{{src-code}}", programSection).replace("{{mask}}", "");
 
         String inputs = "<s>Source: system\n\n You are a source to source C code automatic paralellizing compiler <step> ";
@@ -60,20 +54,65 @@ public class CodeLLamaTransformer implements LLMTransformer {
         // sums of all contiguous sublists of a given list. <step> Source:
         // assistant\nDestination: user\n\n ";
         obj.put("inputs", inputs);
+
+        JSONObject parameters = new JSONObject();
+        parameters.put("temperature", modelParameters.getTemperature());
+        parameters.put("top_p", modelParameters.getTopP());
+        parameters.put("return_full_text", false);
+        // parameters.put("top_p", 0.8f);
+        int maxNewTokens = (programSection.length() / 3) + 600;
+        maxNewTokens = maxNewTokens < modelParameters.getMaxNewTokens() ? maxNewTokens
+                : modelParameters.getMaxNewTokens();
+        maxNewTokens = modelParameters.getMaxNewTokens();
+        parameters.put("max_new_tokens", maxNewTokens);
         obj.put("parameters", parameters);
+
+        JSONObject options = new JSONObject();
+        options.put("wait_for_model", true);
+        options.put("use_cache", false);
+        obj.put("options", options);
 
         HttpRequest request = createHTTPRequest(obj);
 
-        HttpResponse<String> response = client.send(request, BodyHandlers.ofString());
+        try {
+            HttpResponse<String> response = client.send(request, BodyHandlers.ofString());
 
-        // Output the response status code
-        System.out.println(response.body());
-        JSONArray responses = new JSONArray(response.body());
-        JSONObject LLMMessage = responses.getJSONObject(0);
-        String content = LLMMessage.getString("generated_text");
+            // Output the response status code
+            // System.out.println(response.body());
+            int status = response.statusCode();
 
-        LLMResponse llmResponse = new LLMResponse(model, prompt, LLMMessage, content, modelParameters);
-        return llmResponse;
+            // Output the response status code
+            // System.out.println(response.body());
+
+            if (status != 200) {
+                throw new Exception(response.body());
+            }
+
+            String body = response.body();
+            if (PrintTools.getVerbosity() >= 3) {
+
+                System.out.println("BODY");
+                System.out.println(body);
+
+            }
+
+            JSONArray responses = new JSONArray(body);
+            JSONObject LLMMessage = responses.getJSONObject(0);
+            String content = LLMMessage.getString("generated_text");
+
+            LLMResponse llmResponse = new LLMResponse(model, prompt, LLMMessage, content, modelParameters);
+            return llmResponse;
+
+        } catch (Exception e) {
+            JSONObject errorObj = new JSONObject();
+            errorObj.put("error", e.getMessage());
+
+            JSONArray stackTrace = new JSONArray(e.getStackTrace());
+            errorObj.put("trace", stackTrace);
+            LLMResponse llmResponse = new LLMResponse(model, prompt, errorObj, e.getMessage(), modelParameters);
+            return llmResponse;
+
+        }
 
     }
 

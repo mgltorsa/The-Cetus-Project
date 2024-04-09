@@ -1,5 +1,7 @@
-Given the program below, improve its performance using OpenMP.
+Given the C program below, improve its performance using OpenMP.
 #### Program:
 {{src-code}}
 
 #### Full optimized version:
+{{mask}}
+Only provide the code snippets, do not provide more than that. To provide the code snippet use ```c{{src-code}}```
