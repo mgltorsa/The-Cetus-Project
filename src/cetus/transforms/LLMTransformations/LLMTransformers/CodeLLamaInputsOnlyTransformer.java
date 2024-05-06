@@ -1,27 +1,18 @@
 package cetus.transforms.LLMTransformations.LLMTransformers;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
-import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import cetus.hir.PrintTools;
 
-public class CodeLLamaTransformer implements LLMTransformer {
+public class CodeLLamaInputsOnlyTransformer implements LLMTransformer {
 
-    public static final String MODEL = "codellama/CodeLlama-70b-Instruct-hf";
+    public static final String MODEL = "CodeLlama-70b-Instruct-hf-Inputs-Only";
     // public static final String MODEL = "meta-llama/CodeLlama-70b-Instruct-hf";
 
-    private HttpClient client;
     private String model;
 
-    public CodeLLamaTransformer() {
-        client = HttpClient.newHttpClient();
+    public CodeLLamaInputsOnlyTransformer() {
         this.model = MODEL;
     }
 
@@ -29,23 +20,12 @@ public class CodeLLamaTransformer implements LLMTransformer {
         return model;
     }
 
-    private HttpRequest createHTTPRequest(JSONObject body) {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://rjbq4yphmt93o96e.us-east-1.aws.endpoints.huggingface.cloud"))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-
-                .header("Authorization", "Bearer " + System.getenv("HF_TOKEN"))
-                .POST(BodyPublishers.ofString(body.toString()))
-                .build();
-        return request;
-    }
+    
 
     public LLMResponse transform(String promptTemplate, String programSection, BasicModelParameters modelParameters)
             throws Exception {
 
-        String prompt = promptTemplate.replace("{{src-code}}", programSection.substring(0, programSection.length() / 3))
-                .replace("{{mask}}", "");
+        String prompt = promptTemplate.replace("{{src-code}}", programSection).replace("{{mask}}", "");
 
         String inputs = "<s>Source: system\n\n You are a source to source C code automatic paralellizing compiler <step> ";
         inputs += "Source: user\n\n " + prompt.replaceAll("\n", " ") + " <step> ";
@@ -64,14 +44,11 @@ public class CodeLLamaTransformer implements LLMTransformer {
         parameters.put("top_p", modelParameters.getTopP());
         parameters.put("return_full_text", false);
         // parameters.put("top_p", 0.8f);
-        int sectionTokens = (prompt.length() / 2);
         int maxNewTokens = (programSection.length() / 3) + 600;
         maxNewTokens = maxNewTokens < modelParameters.getMaxNewTokens() ? maxNewTokens
                 : modelParameters.getMaxNewTokens();
         maxNewTokens = modelParameters.getMaxNewTokens();
-        if (1200 - sectionTokens > 0) {
-            parameters.put("max_new_tokens", (1200 - sectionTokens));
-        }
+        parameters.put("max_new_tokens", maxNewTokens);
         obj.put("parameters", parameters);
 
         JSONObject options = new JSONObject();
@@ -79,33 +56,10 @@ public class CodeLLamaTransformer implements LLMTransformer {
         options.put("use_cache", false);
         obj.put("options", options);
 
-        HttpRequest request = createHTTPRequest(obj);
-
         try {
-            HttpResponse<String> response = client.send(request, BodyHandlers.ofString());
 
-            // Output the response status code
-            // System.out.println(response.body());
-            int status = response.statusCode();
-
-            // Output the response status code
-            // System.out.println(response.body());
-
-            if (status != 200) {
-                throw new Exception(response.body());
-            }
-
-            String body = response.body();
-            if (PrintTools.getVerbosity() >= 3) {
-
-                System.out.println("BODY");
-                System.out.println(body);
-
-            }
-
-            JSONArray responses = new JSONArray(body);
-            JSONObject LLMMessage = responses.getJSONObject(0);
-            String content = LLMMessage.getString("generated_text");
+            JSONObject LLMMessage = obj;
+            String content = LLMMessage.getString("inputs");
 
             LLMResponse llmResponse = new LLMResponse(model, prompt, LLMMessage, content, modelParameters);
             return llmResponse;

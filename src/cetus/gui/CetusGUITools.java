@@ -102,25 +102,26 @@ public class CetusGUITools {
 
 		String line = null;
 		ArrayList<String> lines = new ArrayList<String>();
-		
-		try {			
-			URL u = new URL(urlString);
-			InputStream ins = u.openStream();
-			InputStreamReader isr = new InputStreamReader(ins);
-			BufferedReader brd = new BufferedReader(isr);
-			while ((line = brd.readLine()) != null) {
-				lines.add(line);
-			}
-			brd.close();
-			isr.close();
-			ins.close();
-			return lines.toArray(new String[lines.size()]);
+		return null;
+		//TODO: UNCOMMENT
+		// try {			
+		// 	URL u = new URL(urlString);
+		// 	InputStream ins = u.openStream();
+		// 	InputStreamReader isr = new InputStreamReader(ins);
+		// 	BufferedReader brd = new BufferedReader(isr);
+		// 	while ((line = brd.readLine()) != null) {
+		// 		lines.add(line);
+		// 	}
+		// 	brd.close();
+		// 	isr.close();
+		// 	ins.close();
+		// 	return lines.toArray(new String[lines.size()]);
 			
-		} catch (IOException e) {
-			//System.out.println("Error: " + e.getMessage());
-			System.out.println("Error: reading URL failed: "+urlString);
-			return null;
-		}
+		// } catch (IOException e) {
+		// 	//System.out.println("Error: " + e.getMessage());
+		// 	System.out.println("Error: reading URL failed: "+urlString);
+		// 	return null;
+		// }
 	}
 
 	

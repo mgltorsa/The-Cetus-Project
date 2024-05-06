@@ -21,6 +21,8 @@ import java.util.ArrayList;
 
 import javax.swing.SwingUtilities;
 
+import AOTEnvironment.planner.infrastructure.CetusPlanner;
+
 /**
  * Implements the command line parser and controls pass ordering.
  * Users may extend this class by overriding runPasses
@@ -169,31 +171,39 @@ public class Driver {
                 LLMOptimizationPass.PASS_TEMPERATURE_CMD_OPTION,
                 LLMOptimizationPass.PASS_TEMPERATURE_CMD_DESCRIPTION);
 
-
         options.add(options.UTILITY,
                 LLMOptimizationPass.PASS_FOLDER_CMD_OPTION,
                 LLMOptimizationPass.PASS_FOLDER_CMD_DESCRIPTION);
-    
+
         options.add(options.UTILITY,
                 LLMOptimizationPass.PASS_PROMPTS_CMD_OPTION,
                 LLMOptimizationPass.PASS_PROMPTS_CMD_DESCRIPTION);
-           
+
         options.add(options.UTILITY,
                 LLMOptimizationPass.PASS_TOP_P_CMD_OPTION,
                 LLMOptimizationPass.PASS_TOP_P_CMD_DESCRIPTION);
-                
+
+        String envsFlags = System.getenv("CFLAGS");
+        String cflags = "";
+
+        if (envsFlags != null) {
+            cflags = envsFlags;
+        }
+
         if ((System.getProperty("os.name").toLowerCase()).indexOf("win") >= 0)
             options.add(options.UTILITY,
                     "preprocessor",
-                    "cpp.exe -E",
+                    String.format("cpp.exe %s -E", cflags),
                     "command",
                     "Set the preprocessor command to use");
-        else
+        else {
+
             options.add(options.UTILITY,
                     "preprocessor",
-                    "cpp -C -I.",
+                    String.format("cpp %s -C -I.", cflags),
                     "command",
                     "Set the preprocessor command to use");
+        }
         options.add(options.ANALYSIS,
                 "privatize", // not always on, but if on without value, "2" assigned automatically
                 "2", // move option dependences analysis up since -parallelize-loops=1 is default now
@@ -365,6 +375,14 @@ public class Driver {
         options.add(options.TRANSFORM,
                 "loop_interchange",
                 "Exchanges the order of two iteration variables used by a nested loop");
+
+        // TODO: ONLY FOR AOT
+        options.add(options.UTILITY, "bench", "");
+        options.add(options.UTILITY, "kernel", "");
+        options.add(options.UTILITY, "routine", "");
+        options.add(options.UTILITY, "append", "");
+
+        options.add(options.TRANSFORM, CetusPlanner.PLANNER_PASS_CMD_FLAG, CetusPlanner.PLANNER_PASS_DESC);
     }
 
     /**
@@ -423,6 +441,11 @@ public class Driver {
                     setOptionValue(option_name, opt.substring(eq + 1));
                 }
             } else {
+                // TODO: REMOVE, it is only for AOT
+
+                // use the value from the command line
+                setOptionValue(option_name, opt.substring(eq + 1));
+
                 System.err.println("ignoring unrecognized option "
                         + option_name);
             }
@@ -796,6 +819,11 @@ public class Driver {
         // }
 
         PrintTools.printlnStatus("[Driver] print all options :\n" + options.dumpOptions(), 4);
+
+        if (getOptionValue(CetusPlanner.PLANNER_PASS_CMD_FLAG) != null) {
+            TransformPass.run(new CetusPlanner(program));
+            return;
+        }
 
         if (getOptionValue(LLMOptimizationPass.PASS_CMD_OPTION) != null
                 && !getOptionValue(LLMOptimizationPass.PASS_CMD_OPTION).equals("0")) {

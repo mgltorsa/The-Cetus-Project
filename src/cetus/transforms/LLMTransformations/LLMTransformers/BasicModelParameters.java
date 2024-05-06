@@ -8,29 +8,29 @@ public class BasicModelParameters implements JSONString {
 
     public static final int MAX_NEW_TOKENS=2000;
 
-    private float temperature;
-    private float topP;
+    private double temperature;
+    private double topP;
     private int maxNewTokens;
 
     public BasicModelParameters() {
-        this(0.2f, MAX_NEW_TOKENS);
+        this(0.2, MAX_NEW_TOKENS);
     }
 
-    public BasicModelParameters(float temperature) {
+    public BasicModelParameters(double temperature) {
         this(temperature, MAX_NEW_TOKENS);
     }
 
-    public BasicModelParameters(float temperature, int maxNewTokens) {
+    public BasicModelParameters(double temperature, int maxNewTokens) {
         this(temperature, maxNewTokens, 0.1f);
     }
 
-    public BasicModelParameters(float temperature, int maxNewTokens, float topP) {
+    public BasicModelParameters(double temperature, int maxNewTokens, double topP) {
         this.temperature = temperature;
         this.maxNewTokens = maxNewTokens;
         this.topP= topP;
     }
 
-    public float getTemperature() {
+    public double getTemperature() {
         return temperature;
     }
 
@@ -52,7 +52,7 @@ public class BasicModelParameters implements JSONString {
         return this.toString();
     }
 
-    public float getTopP() {
+    public double getTopP() {
         return topP;
     }
 

@@ -705,7 +705,8 @@ public class OmpParser {
         omp_atomic, 
         omp_flush, 
         omp_ordered,
-        omp_threadprivate
+        omp_threadprivate,
+        omp_simd
     }
 
     public static enum omp_clause {

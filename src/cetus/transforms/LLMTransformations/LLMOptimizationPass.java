@@ -38,6 +38,7 @@ import cetus.hir.Traversable;
 import cetus.transforms.AnnotationParser;
 import cetus.transforms.TransformPass;
 import cetus.transforms.LLMTransformations.LLMTransformers.BasicModelParameters;
+import cetus.transforms.LLMTransformations.LLMTransformers.CodeLLamaInputsOnlyTransformer;
 import cetus.transforms.LLMTransformations.LLMTransformers.CodeLLamaTransformer;
 import cetus.transforms.LLMTransformations.LLMTransformers.GPTTransformer;
 import cetus.transforms.LLMTransformations.LLMTransformers.LLMResponse;
@@ -120,7 +121,9 @@ public class LLMOptimizationPass extends TransformPass {
             cotPrompt = loadPrompt(System.getenv("CETUS_COT_PROMPT"));
             instructionsPrompt = loadPrompt(System.getenv("CETUS_INSTRUCTIONS_PROMPT"));
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("ISSUE_LOADING_PROMPTS");
+            System.err.println(e.getMessage());
+            // e.printStackTrace();
         }
 
     }
@@ -302,7 +305,60 @@ public class LLMOptimizationPass extends TransformPass {
 
     }
 
+    private void saveInputsOnly(String optimizationId, String parentFolder, LLMResponse llmResponse) {
+        String optimizationDirStr = parentFolder + "/" + optimizationId;
+        File optimizationDir = new File(optimizationDirStr);
+        if (!optimizationDir.exists()) {
+            optimizationDir.mkdirs();
+        }
+
+        File file = null;
+
+        // Loop until a unique filename is found
+        int counter = 1;
+        while (true) {
+            String fileName = "input_" + counter + ".txt";
+            file = new File(optimizationDir + "/" + fileName);
+
+            // Check if the file already exists
+            if (!file.exists()) {
+                try {
+                    // Create the file
+                    if (file.createNewFile()) {
+
+                        BufferedWriter bw = new BufferedWriter(new FileWriter(file));
+                        String code = llmResponse.getContent();
+
+                        bw.write(code);
+                        bw.close();
+
+                        String llmResponseFileName = "input_" + counter + ".json";
+                        File llmResponseFile = new File(optimizationDir + "/" + llmResponseFileName);
+                        bw = new BufferedWriter(new FileWriter(llmResponseFile));
+
+                        bw.write(llmResponse.getResponse().toString());
+                        bw.close();
+
+                    } else {
+                        System.out.println("Failed to create the file: " + fileName);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                break; // Exit the loop once a unique filename is found and the file is created
+            }
+
+            counter++; // Increment the counter to generate a new filename
+        }
+
+    }
+
     private void saveCode(String optimizationId, String parentFolder, LLMResponse llmResponse) {
+
+        if (llmResponse.getModel().equals(CodeLLamaInputsOnlyTransformer.MODEL)) {
+            saveInputsOnly(optimizationId, parentFolder, llmResponse);
+            return;
+        }
         String optimizationDirStr = parentFolder + "/" + optimizationId;
         File optimizationDir = new File(optimizationDirStr);
         if (!optimizationDir.exists()) {
@@ -458,13 +514,18 @@ public class LLMOptimizationPass extends TransformPass {
         }
 
         transformersOptionsStr = transformersOptionsStr.toLowerCase();
+        String[] transformersOptions = transformersOptionsStr.split(",");
 
-        if (transformersOptionsStr.contains("gpt")) {
-            transformers.add(new GPTTransformer());
-        }
-
-        if (transformersOptionsStr.contains("codellama")) {
-            transformers.add(new CodeLLamaTransformer());
+        for (String option : transformersOptions) {
+            if (option.equals("gpt")) {
+                transformers.add(new GPTTransformer());
+            }
+            if (option.equals("codellama-inputs")) {
+                transformers.add(new CodeLLamaInputsOnlyTransformer());
+            }
+            if (option.equals("codellama")) {
+                transformers.add(new CodeLLamaTransformer());
+            }
         }
 
         return transformers;
@@ -473,19 +534,19 @@ public class LLMOptimizationPass extends TransformPass {
     private void startOptimizations() throws Exception {
         loadPrompts();
 
-        Float temperature = 0.7f;
+        Double temperature = 0.7;
         String temperatureStr = commandLineOptionSet
                 .getValue(PASS_TEMPERATURE_CMD_OPTION);
         if (temperatureStr != null && !temperatureStr.isEmpty() && !temperatureStr.isBlank()) {
-            temperature = Float.parseFloat(temperatureStr);
+            temperature = Double.parseDouble(temperatureStr);
         }
 
         String topPStr = commandLineOptionSet
                 .getValue(PASS_TOP_P_CMD_OPTION);
 
-        float topP = 0.1f;
+        Double topP = 0.1;
         if (topPStr != null && !topPStr.isEmpty() && !topPStr.isBlank()) {
-            topP = Float.parseFloat(topPStr);
+            topP = Double.parseDouble(topPStr);
         }
 
         if (PrintTools.getVerbosity() >= 2) {
@@ -528,35 +589,37 @@ public class LLMOptimizationPass extends TransformPass {
                     String cotFolder = getCotFolder(
                             transformer.getModel() + "_" + temperatureSuffix + "_" + topPSuffix);
 
-                    if (shouldInstruct) {
-                        List<CompletableFuture<Void>> tasksInstructions = callCodeTransformation(executorService,
-                                section,
-                                transformer,
-                                modelParameters, instructionsFolder, instructionsPrompt);
+                    for (int index = 0; index < 4; index++) {
 
-                        for (CompletableFuture<Void> task : tasksInstructions) {
-                            allTasks.add(task);
+                        if (shouldInstruct) {
+                            List<CompletableFuture<Void>> tasksInstructions = callCodeTransformation(executorService,
+                                    section,
+                                    transformer,
+                                    modelParameters, instructionsFolder, instructionsPrompt);
+
+                            for (CompletableFuture<Void> task : tasksInstructions) {
+                                allTasks.add(task);
+                            }
                         }
-                    }
 
-                    if (shouldCot) {
-                        List<CompletableFuture<Void>> tasksCot = callCodeTransformation(executorService, section,
-                                transformer,
-                                modelParameters, cotFolder, cotPrompt);
+                        if (shouldCot) {
+                            List<CompletableFuture<Void>> tasksCot = callCodeTransformation(executorService, section,
+                                    transformer,
+                                    modelParameters, cotFolder, cotPrompt);
 
-                        for (CompletableFuture<Void> task : tasksCot) {
-                            allTasks.add(task);
+                            for (CompletableFuture<Void> task : tasksCot) {
+                                allTasks.add(task);
+                            }
                         }
                     }
                 }
 
                 allTasks.forEach(CompletableFuture::join);
 
-                for (LLMTransformer transformer : transformers) {
-                    Program program = parseProgram(section, transformer);
-                     
+                // for (LLMTransformer transformer : transformers) {
+                // Program program = parseProgram(section, transformer);
 
-                }
+                // }
 
             }
 
@@ -646,13 +709,12 @@ public class LLMOptimizationPass extends TransformPass {
                 }
             }
         }
-
     }
 
     @Override
     public void start() {
         try {
-            LoopTools.addLoopName(program);
+            // LoopTools.addLoopName(program);
             startOptimizations();
 
         } catch (Exception e) {
