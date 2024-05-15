@@ -12,11 +12,9 @@ import cetus.hir.SymbolTools;
 import cetus.hir.Tools;
 import cetus.transforms.*;
 import cetus.transforms.tiling.pawTiling.ParallelAwareTilingPass;
-import cetus.utils.LoggingUtils;
 
 import java.io.*;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
@@ -398,13 +396,12 @@ public class Driver {
                         + "      =2 Profile-based loop selection");
 
         options.add(options.TRANSFORM,
-                    "loop_interchange", 
-                     "Exchanges the order of two iteration variables used by a nested loop");
+                "loop_interchange",
+                "Exchanges the order of two iteration variables used by a nested loop");
 
-        
         options.add(options.ANALYSIS,
-                     "subsub_analysis", 
-                      "Performs subscripted subscript analysis on the program");
+                "subsub_analysis",
+                "Performs subscripted subscript analysis on the program");
 
         options.add(options.TRANSFORM,
                 ParallelAwareTilingPass.PAW_TILING,
@@ -903,17 +900,14 @@ public class Driver {
         if (getOptionValue("subsub_analysis") != null) {
             AnalysisPass.run(new SubscriptedSubscriptAnalysis(program));
         }
-      
 
         if (getOptionValue("reduction") != null && !getOptionValue("reduction").equals("0")) {
             AnalysisPass.run(new Reduction(program));
         }
-        /*
-         * if (getOptionValue("openmp") != null) {
-         * AnalysisPass.run(new OmpAnalysis(program));
-         * }
-         * 
-         */
+
+        if (getOptionValue("openmp") != null) {
+            AnalysisPass.run(new OmpAnalysis(program));
+        }
 
         if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
             AnalysisPass.run(new LoopParallelizationPass(program));
@@ -935,11 +929,11 @@ public class Driver {
         }
 
         if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
-            try{
+            try {
                 TransformPass.run(new LoopInterchange(program));
 
-            }catch(Exception e){
-                if(PrintTools.getVerbosity()>1){
+            } catch (Exception e) {
+                if (PrintTools.getVerbosity() > 1) {
                     System.err.println("ERROR EXECUTING LOOP INTERCHANGE DURING TILING");
                     e.printStackTrace();
                 }
@@ -998,34 +992,35 @@ public class Driver {
      * @throws IOException
      */
     public static void main(String[] args) {
-    	
-    	//checkUpdate();
-		if (args.length > 0 && args[0].toLowerCase().equals("-gui")) {
-//    	if (args.length == 0 || args[0].toLowerCase().equals("-gui")) {
-			t2 = new ThreadUpdate(10, true);
-			t2.start(); //thread 2 for other things, like version check
-//			CetusGUI newGUI = new CetusGUI(args);
-//			newGUI.setVisible(true);
-			System.out.println("Starting Cetus GUI...");
-			Tools.exitThrowsException(true); //GUI will not exit upon exception
-			SwingUtilities.invokeLater(new Runnable() {
-				public void run() {
-					CetusGUI newGUI = new CetusGUI();
-					//newGUI.pack();
-					newGUI.setVisible(true);
-				}
-			});
-		} else {
-			//System.out.println(args.length);
-//			t2 = new Thread2(0);
-//			t2.start(); //thread 2 for other things, like version check
-			System.out.println("Start Cetus GUI with \"-gui\" as the first arg, " +
-					"e.g. \"./cetus -gui\" or \"java -jar cetus.jar -gui\".");
-			System.out.println();
-			(new Driver()).run(args);
-			//checkUpdate();
-			//t2.interrupt(); //if thread 2 for checking new version has not finished after Cetus finished, interrupt it.
-		}
+
+        // checkUpdate();
+        if (args.length > 0 && args[0].toLowerCase().equals("-gui")) {
+            // if (args.length == 0 || args[0].toLowerCase().equals("-gui")) {
+            t2 = new ThreadUpdate(10, true);
+            t2.start(); // thread 2 for other things, like version check
+            // CetusGUI newGUI = new CetusGUI(args);
+            // newGUI.setVisible(true);
+            System.out.println("Starting Cetus GUI...");
+            Tools.exitThrowsException(true); // GUI will not exit upon exception
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    CetusGUI newGUI = new CetusGUI();
+                    // newGUI.pack();
+                    newGUI.setVisible(true);
+                }
+            });
+        } else {
+            // System.out.println(args.length);
+            // t2 = new Thread2(0);
+            // t2.start(); //thread 2 for other things, like version check
+            System.out.println("Start Cetus GUI with \"-gui\" as the first arg, " +
+                    "e.g. \"./cetus -gui\" or \"java -jar cetus.jar -gui\".");
+            System.out.println();
+            (new Driver()).run(args);
+            // checkUpdate();
+            // t2.interrupt(); //if thread 2 for checking new version has not finished after
+            // Cetus finished, interrupt it.
+        }
     }
 
 }

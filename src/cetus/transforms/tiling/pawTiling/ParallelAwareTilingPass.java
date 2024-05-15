@@ -2,11 +2,9 @@ package cetus.transforms.tiling.pawTiling;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -56,7 +54,6 @@ import cetus.transforms.tiling.pawTiling.optimizer.VersionChooser;
 import cetus.transforms.tiling.pawTiling.optimizer.providers.ComplexChooserProvider;
 import cetus.transforms.tiling.pawTiling.optimizer.providers.NthGuidedChooserProvider;
 import cetus.transforms.tiling.pawTiling.optimizer.providers.VersionChooserProvider;
-import cetus.utils.ArrayUtils;
 import cetus.utils.CacheUtils;
 import cetus.utils.DataReuseAnalysisUtils;
 import cetus.utils.VariableDeclarationUtils;
@@ -486,6 +483,30 @@ public class ParallelAwareTilingPass extends TransformPass {
             declarator.setInitializer(init);
         }
     }
+
+    //TODO: INtegrate
+    private Expression computeRawTileSize(Loop loop, Expression cache) {
+
+        List<ArrayAccess> arrayAccesses = new ArrayList<>();
+        new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
+
+        return CacheUtils.getRawBlockSize(cache, arrayAccesses);
+    }
+
+    //TODO: INtegrate
+    private Expression computeBalancedCrossStripSize(Expression numOfInstructions, Expression numOfProcessors,
+    Expression rawTileSize) {
+
+    // (numOfInstructions / (processors * rawSize)) * processors
+    Expression divisor = Symbolic.multiply(
+            Symbolic.divide(numOfInstructions, Symbolic.multiply(numOfProcessors, rawTileSize)),
+            numOfProcessors);
+
+    // instructions / ( ( instructions / (processors * rawSize) ) * processors )
+    Expression strip = Symbolic.divide(numOfInstructions, divisor);
+    return strip;
+    }
+
 
     private Expression computeBalancedCrossStripSize(Expression rawTileSize, Expression numOfProcessors) {
 

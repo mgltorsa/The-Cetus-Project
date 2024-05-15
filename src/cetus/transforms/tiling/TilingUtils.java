@@ -18,6 +18,7 @@ import cetus.hir.ForLoop;
 import cetus.hir.Identifier;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
+import cetus.hir.Program;
 import cetus.hir.Statement;
 import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
@@ -28,6 +29,27 @@ import cetus.utils.VariableDeclarationUtils;
 public class TilingUtils {
 
     public final static String TILE_SUFFIX = "b";
+
+    public static int findLRWBlock(int N, int cache) {
+        int maxWidth = Math.min(N, cache);
+        int addr = N / 2;
+        int di = 0;
+        int dj = 0;
+        while (true) {
+            addr = addr + cache;
+            di = (int) Math.floor(addr / N);
+            dj = (int) Math.abs((addr % N) - N / 2);
+            if (di >= Math.min(maxWidth, dj)) {
+                return Math.min(maxWidth, dj);
+            }
+            maxWidth = Math.min(maxWidth, dj);
+
+        }
+    }
+
+    public static void injectFindLRWBlock(Program program, Expression N, Expression C ){
+        //TODO: Add findLRW algorithm in the program
+    }
 
     public static Loop createInStripLoop(ForLoop loop, Expression stripExpr, Identifier newIndexVariable)
             throws Exception {

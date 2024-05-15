@@ -3,7 +3,6 @@ package cetus.analysis.loopTools;
 import java.util.ArrayList;
 import java.util.List;
 
-import cetus.analysis.LoopTools;
 import cetus.hir.BinaryExpression;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
@@ -12,8 +11,6 @@ import cetus.hir.IDExpression;
 import cetus.hir.Symbolic;
 import cetus.hir.Traversable;
 import cetus.utils.VariableDeclarationUtils;
-import omp2gpu.analysis.AnalysisTools;
-
 public final class LoopInstructionsUtils {
 
     public static Expression getTotalOfInstructions(ForLoop loopNest) throws Exception {
