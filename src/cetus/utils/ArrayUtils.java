@@ -2,13 +2,12 @@ package cetus.utils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import cetus.hir.ArrayAccess;
 import cetus.hir.ArraySpecifier;
+import cetus.hir.BinaryExpression;
 import cetus.hir.Declaration;
 import cetus.hir.Expression;
-import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
 import cetus.hir.Identifier;
 import cetus.hir.IntegerLiteral;
@@ -18,7 +17,6 @@ import cetus.hir.SymbolTable;
 import cetus.hir.Symbolic;
 import cetus.hir.Traversable;
 import cetus.hir.UnaryExpression;
-import cetus.hir.VariableDeclaration;
 import cetus.hir.VariableDeclarator;
 
 public class ArrayUtils {
@@ -65,7 +63,7 @@ public class ArrayUtils {
         }
 
         type = (Specifier) types.get(0);
-    
+
         if (type == Specifier.BOOL)
             typeSize = 1;
         else if (type == Specifier.CHAR)
@@ -93,18 +91,104 @@ public class ArrayUtils {
         return typeSize;
     }
 
-    public static final Expression getFullSizeInBytes(SymbolTable symbols, List<ArrayAccess> arrayAccesses) {
-        Expression dataSize = new IntegerLiteral("0");
+    public static final Expression getMaxSize(SymbolTable symbols, List<ArrayAccess> arrayAccesses) {
+        long dataSize = 0;
         for (ArrayAccess arrayAccess : arrayAccesses) {
-            Expression typeSize = new IntegerLiteral(getTypeSize(arrayAccess) / 8);
             Expression arraySize = getArraySize(symbols, arrayAccess);
-            dataSize = Symbolic.add(dataSize, Symbolic.multiply(typeSize, arraySize));
+            boolean isComputable = arraySize.getChildren().stream().allMatch(child -> child instanceof IntegerLiteral);
+            if (!isComputable) {
+                return arraySize;
+            }
+            if (arraySize instanceof BinaryExpression) {
+                BinaryExpression sizeExpr = (BinaryExpression) arraySize;
+                for (Traversable child : sizeExpr.getChildren()) {
+                    if (child instanceof IntegerLiteral) {
+                        long sizeVal = ((IntegerLiteral) child).getValue();
+                        dataSize = Math.max(dataSize, sizeVal);
+                    }
+                }
+            } else if (arraySize instanceof IntegerLiteral) {
+                long sizeVal = ((IntegerLiteral) arraySize).getValue();
+                dataSize = Math.max(dataSize, sizeVal);
+            }
         }
 
-        return dataSize;
+        return new IntegerLiteral(dataSize);
     }
 
-    private static final Expression getArraySize(SymbolTable symbols, ArrayAccess arrayAccess) {
+    public static final Expression getFullSize(SymbolTable symbols, List<ArrayAccess> arrayAccesses) {
+        long dataSize = 1;
+        for (ArrayAccess arrayAccess : arrayAccesses) {
+            long arraySize = 1;
+            Expression arrayName = arrayAccess.getArrayName();
+            IDExpression arrayID;
+
+            if (arrayName instanceof IDExpression) {
+                arrayID = (IDExpression) arrayName;
+            } else {
+                List<Traversable> ids = arrayName.getChildren()
+                        .stream()
+                        .filter(name -> name instanceof Identifier)
+                        .toList();
+                if (ids.isEmpty()) {
+                    return new IntegerLiteral(dataSize);
+                }
+                arrayID = (IDExpression) ids.get(0);
+            }
+            Declaration declaration = symbols.findSymbol(arrayID);
+
+            List<Traversable> children = declaration.getChildren();
+            for (int i = 0; i < children.size(); i++) {
+                Traversable childObj = children.get(i);
+                if (!(childObj instanceof VariableDeclarator)) {
+                    continue;
+                }
+                VariableDeclarator child = (VariableDeclarator) childObj;
+                if (!child.getSymbolName().equals(arrayName.toString())) {
+                    continue;
+                }
+                List<ArraySpecifier> specs = child.getArraySpecifiers();
+                for (ArraySpecifier arraySpecifier : specs) {
+                    if (arraySpecifier.getNumDimensions() == 0) {
+                        continue;
+                    }
+                    // Only rows dimension required
+                    int dimensions = arraySpecifier.getNumDimensions();
+                    for (int j = 0; j < dimensions; j++) {
+                        Expression dimension = arraySpecifier.getDimension(j);
+                        if (dimension == null) {
+                            continue;
+                        }
+
+                        if (dimension instanceof BinaryExpression) {
+                            boolean isComputable = dimension.getChildren().stream()
+                                    .allMatch(nullChild -> nullChild instanceof IntegerLiteral);
+                            if (!isComputable) {
+                                continue;
+                            }
+                            for (Traversable childExpr : dimension.getChildren()) {
+                                if (childExpr instanceof IntegerLiteral) {
+                                    long dimensionSize = ((IntegerLiteral) childExpr).getValue();
+                                    if (dimensionSize <= 0)
+                                        continue;
+                                        arraySize *= dimensionSize;
+                                }
+                            }
+                        } else if (dimension instanceof IntegerLiteral) {
+                            arraySize *= ((IntegerLiteral) dimension).getValue();
+                        }
+
+                    }
+                }
+            }
+
+            dataSize = Math.max(dataSize, arraySize);
+        }
+
+        return new IntegerLiteral(dataSize);
+    }
+
+    public static final Expression getArraySize(SymbolTable symbols, ArrayAccess arrayAccess) {
 
         Expression arrayName = arrayAccess.getArrayName();
         IDExpression arrayID;
@@ -136,14 +220,19 @@ public class ArrayUtils {
             }
             List<ArraySpecifier> specs = child.getArraySpecifiers();
             for (ArraySpecifier arraySpecifier : specs) {
-                int dimensions = arraySpecifier.getNumDimensions();
-                for (int j = 0; j < dimensions; j++) {
-                    Expression dimension = arraySpecifier.getDimension(j);
-                    if(dimension == null) {
-                        dimension = new IntegerLiteral("1");
-                    }
-                    size = Symbolic.multiply(size, dimension);
+                if (arraySpecifier.getNumDimensions() == 0) {
+                    continue;
                 }
+                // Only rows dimension required
+                size = arraySpecifier.getDimension(0);
+                // int dimensions = arraySpecifier.getNumDimensions();
+                // for (int j = 0; j < dimensions; j++) {
+                // Expression dimension = arraySpecifier.getDimension(j);
+                // if(dimension == null) {
+                // dimension = new IntegerLiteral("1");
+                // }
+                // size = Symbolic.multiply(size, dimension);
+                // }
             }
         }
 

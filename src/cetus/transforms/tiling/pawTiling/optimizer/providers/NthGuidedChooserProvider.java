@@ -9,9 +9,14 @@ import cetus.analysis.DependenceVector;
 import cetus.analysis.LoopTools;
 import cetus.analysis.exceptions.IllegalDependenceVector;
 import cetus.exec.CommandLineOptionSet;
+import cetus.hir.AssignmentExpression;
+import cetus.hir.AssignmentOperator;
+import cetus.hir.CodeAnnotation;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
+import cetus.hir.IDExpression;
+import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
 import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
@@ -20,6 +25,7 @@ import cetus.transforms.tiling.TilingUtils;
 import cetus.transforms.tiling.pawTiling.ParallelAwareTilingPass;
 import cetus.transforms.tiling.pawTiling.optimizer.NthVersionChooser;
 import cetus.transforms.tiling.pawTiling.optimizer.VersionChooser;
+import cetus.utils.VariableDeclarationUtils;
 import cetus.utils.reuseAnalysis.DataReuseAnalysis;
 
 public class NthGuidedChooserProvider implements VersionChooserProvider {
@@ -50,8 +56,8 @@ public class NthGuidedChooserProvider implements VersionChooserProvider {
     }
 
     @Override
-    public VersionChooser chooseOptimalVersion(SymbolTable symbolTable, Loop loopNest, List<DependenceVector> dvs,
-            DataReuseAnalysis reuseAnalysis) throws Exception {
+    public VersionChooser chooseOptimalVersion(SymbolTable symbolTable, ForLoop loopNest, List<DependenceVector> dvs,
+            DataReuseAnalysis reuseAnalysis, long balancedTileSize) throws Exception {
 
         List<Expression> reusableOrder = reuseAnalysis.getLoopNestMemoryOrder();
         Collections.reverse(reusableOrder);
@@ -70,6 +76,32 @@ public class NthGuidedChooserProvider implements VersionChooserProvider {
         int maxTilingLvl = nthLevel < reusableLoops ? nthLevel : reusableLoops;
 
         TiledLoop optimalTileVersion = null;
+
+        Symbol loopSymbol = LoopTools.getLoopIndexSymbol(loopNest);
+
+        IDExpression crossIndex = VariableDeclarationUtils
+                .getIdentifier(symbolTable, loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
+
+        if (crossIndex == null) {
+            crossIndex = VariableDeclarationUtils.declareVariable(symbolTable,
+                    loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
+        }
+
+        CodeAnnotation crossIndexAnnotation = new CodeAnnotation(
+                String.format("%s=%d;", crossIndex, 0));
+
+        loopNest.annotateBefore(crossIndexAnnotation);
+        IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(symbolTable,
+                loopSymbol.getSymbolName() + TilingUtils.TILE_SUFFIX);
+
+        if (stripIdentifier == null) {
+            stripIdentifier = VariableDeclarationUtils.declareVariable(symbolTable,
+                    loopSymbol.getSymbolName() + TilingUtils.TILE_SUFFIX, new IntegerLiteral(balancedTileSize));
+        }
+
+        CodeAnnotation newStripIndexAnnotation = new CodeAnnotation(
+                String.format("%s=%s;", stripIdentifier, ParallelAwareTilingPass.BALANCED_TILE_SIZE_NAME));
+        loopNest.annotateBefore(newStripIndexAnnotation);
 
         TiledLoop curLoop = new TiledLoop(((ForLoop) loopNest), dvs);
         List<DependenceVector> curDvs = dvs;

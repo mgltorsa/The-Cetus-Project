@@ -8,9 +8,10 @@ import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
-import cetus.hir.Symbolic;
+import cetus.hir.IntegerLiteral;
 import cetus.hir.Traversable;
 import cetus.utils.VariableDeclarationUtils;
+
 public final class LoopInstructionsUtils {
 
     public static Expression getTotalOfInstructions(ForLoop loopNest) throws Exception {
@@ -24,10 +25,12 @@ public final class LoopInstructionsUtils {
 
         BinaryExpression cond = (BinaryExpression) loopNestCond;
         Expression RHS = cond.getRHS();
-        Expression totalOfInstructions = RHS;
+        // Expression totalOfInstructions = RHS;
+        long totalOfInstructions = 1;
         if (RHS instanceof IDExpression) {
-            totalOfInstructions = VariableDeclarationUtils.getVariableDeclaredValue(
+            Expression declaredValue = VariableDeclarationUtils.getVariableDeclaredValue(
                     VariableDeclarationUtils.getVariableDeclarationSpace((Traversable) loopNest), (IDExpression) RHS);
+            totalOfInstructions *= ((IntegerLiteral) declaredValue).getValue();
 
         }
         for (int i = 1; i < loops.size(); i++) {
@@ -39,11 +42,11 @@ public final class LoopInstructionsUtils {
                     declaredValue = VariableDeclarationUtils.getVariableDeclaredValue(
                             VariableDeclarationUtils.getVariableDeclarationSpace(loops.get(i)), (IDExpression) RHS);
 
+                    totalOfInstructions *= ((IntegerLiteral) declaredValue).getValue();
                 }
-                totalOfInstructions = Symbolic.multiply(totalOfInstructions, declaredValue);
             }
         }
 
-        return totalOfInstructions;
+        return new IntegerLiteral(totalOfInstructions);
     }
 }

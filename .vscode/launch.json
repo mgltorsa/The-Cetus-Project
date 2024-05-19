@@ -5,6 +5,18 @@
     
     {
       "type": "java",
+      "name": "POLY mvt",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "-paw-tiling -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/mvt/mvt.c",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/mvt",
+        "CFLAGS":""
+      }, 
+      "console": "integratedTerminal",
+    },
+    {
+      "type": "java",
       "name": "POLY atax",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
@@ -44,11 +56,11 @@
       "name": "POLY 3mm",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-paw-tiling -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
+      "args": "-paw-tiling -alias=2 -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
       "env": {
         "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm",
         "CFLAGS":""
-      },
+      }, 
       "console": "integratedTerminal",
     },
     {

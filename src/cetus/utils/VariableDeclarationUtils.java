@@ -2,23 +2,56 @@ package cetus.utils;
 
 import java.util.List;
 
+import cetus.hir.DFIterator;
 import cetus.hir.Declaration;
 import cetus.hir.Declarator;
 import cetus.hir.Expression;
-import cetus.hir.FloatLiteral;
+import cetus.hir.FunctionCall;
 import cetus.hir.IDExpression;
 import cetus.hir.Identifier;
 import cetus.hir.Initializer;
-import cetus.hir.IntegerLiteral;
 import cetus.hir.Literal;
 import cetus.hir.NameID;
+import cetus.hir.Procedure;
 import cetus.hir.Specifier;
+import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
 import cetus.hir.Traversable;
 import cetus.hir.VariableDeclaration;
 import cetus.hir.VariableDeclarator;
 
 public class VariableDeclarationUtils {
+
+    public static SymbolTable getParametersDeclarationSpace(Procedure procedure, IDExpression id) {
+        DFIterator<FunctionCall> functionCalls = new DFIterator<>(procedure.getParent(), FunctionCall.class);
+        while (functionCalls.hasNext()) {
+            FunctionCall functionCall = functionCalls.next();
+            if (functionCall.getProcedure() == procedure) {
+                SymbolTable syt = getVariableDeclarationSpace(functionCall);
+
+                Declaration declaration = syt.findSymbol(id);
+                if (declaration == null) {
+                    continue;
+                }
+                Declarator declarator = null;
+                for (Traversable child : declaration.getChildren()) {
+                    if (!(child instanceof Declarator)) {
+                        continue;
+                    }
+
+                    declarator = (Declarator) child;
+                    break;
+                }
+                if (declarator == null) {
+                    continue;
+                }
+
+                return syt;
+
+            }
+        }
+        return null;
+    }
 
     public static SymbolTable getVariableDeclarationSpace(Traversable traversable) {
 
@@ -37,6 +70,14 @@ public class VariableDeclarationUtils {
     }
 
     public static Expression getVariableDeclaredValue(SymbolTable variableDeclarationSpace, IDExpression id) {
+
+        if (variableDeclarationSpace == null) {
+            return id;
+        }
+        if (variableDeclarationSpace instanceof Procedure) {
+            return getVariableDeclaredValue(getParametersDeclarationSpace((Procedure) variableDeclarationSpace, id),
+                    id);
+        }
         Expression declaredValue = id;
         Declaration declaration = variableDeclarationSpace.findSymbol(id);
         if (declaration == null) {
@@ -55,7 +96,9 @@ public class VariableDeclarationUtils {
         }
 
         if (declarator.getInitializer() == null || declarator.getInitializer().getChildren() == null) {
-            return declaredValue;
+            return getVariableDeclaredValue(
+                    VariableDeclarationUtils.getVariableDeclarationSpace(variableDeclarationSpace.getParent()), id);
+
         }
         for (Traversable child : declarator.getInitializer().getChildren()) {
             if (child instanceof Literal) {
@@ -100,5 +143,24 @@ public class VariableDeclarationUtils {
             variableDeclarationSpace.addDeclaration(declaration.clone());
         }
 
+    }
+
+    public static Identifier getIdentifier(SymbolTable variableDeclarationSpace, String symbolName) {
+        for (Symbol symbol : variableDeclarationSpace.getSymbols()) {
+            if (symbol.getSymbolName().equals(symbolName)) {
+                if (symbol instanceof VariableDeclarator) {
+                    // for (Traversable child : ((VariableDeclarator) symbol).getChildren()) {
+                    Identifier newId = new Identifier(symbol);
+                    return newId;
+                    // if (child instanceof NameID) {
+                    // return ((NameID) child);
+                    // }
+
+                    // }
+                }
+            }
+        }
+
+        return null;
     }
 }

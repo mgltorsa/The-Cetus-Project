@@ -9,5 +9,6 @@
         "stdlib.h": "c",
         "math.h": "c",
         "omp.h": "c"
-    }
+    },
+    "java.debug.settings.onBuildFailureProceed": true
 }

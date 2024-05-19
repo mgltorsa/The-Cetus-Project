@@ -2,28 +2,36 @@ package cetus.transforms.tiling.pawTiling;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import cetus.analysis.AnalysisPass;
 import cetus.analysis.ArrayPrivatization;
+import cetus.analysis.DDGraph;
+import cetus.analysis.DDTDriver;
 import cetus.analysis.DependenceVector;
 import cetus.analysis.LoopParallelizationPass;
 import cetus.analysis.LoopTools;
 import cetus.analysis.Reduction;
+import cetus.analysis.DDGraph.Arc;
 import cetus.analysis.loopTools.LoopInstructionsUtils;
 import cetus.codegen.CodeGenPass;
 import cetus.codegen.ompGen;
 import cetus.exec.CommandLineOptionSet;
 import cetus.exec.Driver;
+import cetus.hir.Annotation;
 import cetus.hir.ArrayAccess;
 import cetus.hir.AssignmentExpression;
+import cetus.hir.AssignmentOperator;
 import cetus.hir.BinaryExpression;
 import cetus.hir.BinaryOperator;
+import cetus.hir.CodeAnnotation;
 import cetus.hir.CompoundStatement;
 import cetus.hir.DFIterator;
 import cetus.hir.Declaration;
@@ -54,6 +62,7 @@ import cetus.transforms.tiling.pawTiling.optimizer.VersionChooser;
 import cetus.transforms.tiling.pawTiling.optimizer.providers.ComplexChooserProvider;
 import cetus.transforms.tiling.pawTiling.optimizer.providers.NthGuidedChooserProvider;
 import cetus.transforms.tiling.pawTiling.optimizer.providers.VersionChooserProvider;
+import cetus.utils.ArrayUtils;
 import cetus.utils.CacheUtils;
 import cetus.utils.DataReuseAnalysisUtils;
 import cetus.utils.VariableDeclarationUtils;
@@ -72,7 +81,7 @@ public class ParallelAwareTilingPass extends TransformPass {
     public final static String CACHE_PARAM_NAME = "cacheSize";
 
     public final static int DEFAULT_PROCESSORS = 4;
-    public final static int DEFAULT_CACHE_SIZE = 8 * 1024; // 32 KiBi = 32 * 1024 bits
+    public final static int DEFAULT_CACHE_SIZE = 32 * 1024; // 32 KiBi = 32 * 1024 bits
     public final static int DEFAULT_CACHE_ALIGNMENT = 16; // common cache alignment
 
     public final static int MAX_ITERATIONS_TO_PARALLELIZE = 100000;
@@ -85,7 +94,7 @@ public class ParallelAwareTilingPass extends TransformPass {
     private Logger logger = Logger.getLogger("PawTiling");
 
     private int numOfProcessors = DEFAULT_PROCESSORS;
-    private int cacheSize = DEFAULT_CACHE_SIZE;
+    private int cacheSizeInKB = DEFAULT_CACHE_SIZE;
     private int cacheAlignment = DEFAULT_CACHE_ALIGNMENT;
 
     private List<Loop> selectedOutermostLoops;
@@ -142,8 +151,8 @@ public class ParallelAwareTilingPass extends TransformPass {
         }
 
         try {
-            cacheSize = Integer.parseInt(commandLineOptions.getValue(CACHE_PARAM_NAME));
-            assert cacheSize > 0;
+            cacheSizeInKB = Integer.parseInt(commandLineOptions.getValue(CACHE_PARAM_NAME));
+            assert cacheSizeInKB > 0;
         } catch (Exception e) {
             logger.warning(
                     "Error on setting cache size. The default value: " + DEFAULT_CACHE_SIZE + " will be used");
@@ -205,11 +214,11 @@ public class ParallelAwareTilingPass extends TransformPass {
                         VariableDeclarationUtils
                                 .getVariableDeclarationSpace(outermostLoop.getParent()));
 
-                Expression cache = createCacheVariable(
-                        VariableDeclarationUtils
-                                .getVariableDeclarationSpace(outermostLoop.getParent()));
+                // Expression cache = createCacheVariable(
+                // VariableDeclarationUtils
+                // .getVariableDeclarationSpace(outermostLoop.getParent()));
 
-                runPawTiling((ForLoop) outermostLoop, cores, cache);
+                runPawTiling((ForLoop) outermostLoop, cores, cacheSizeInKB);
             } catch (Exception e) {
                 logger.log(Level.SEVERE, " ----");
                 logger.log(Level.SEVERE, "Error trying to run paw tiling");
@@ -234,6 +243,7 @@ public class ParallelAwareTilingPass extends TransformPass {
 
         LoopTools.addLoopName(program, true);
 
+        AnalysisPass.run(new DDTDriver(program));
         AnalysisPass.run(new ArrayPrivatization(program));
 
         try {
@@ -247,6 +257,7 @@ public class ParallelAwareTilingPass extends TransformPass {
         AnalysisPass.run(new LoopParallelizationPass(program));
 
         String profitableOmpCopy = Driver.getOptionValue("profitable-omp");
+
         Driver.setOptionValue("profitable-omp", "0");
         CodeGenPass.run(new ompGen(program));
 
@@ -254,7 +265,7 @@ public class ParallelAwareTilingPass extends TransformPass {
 
     }
 
-    private void runPawTiling(ForLoop loopNest, Expression cores, Expression cache) throws Exception {
+    private void runPawTiling(ForLoop loopNest, Expression cores, int cacheSizeInKB) throws Exception {
 
         DataReuseAnalysis reuseAnalysis = null;
 
@@ -267,7 +278,9 @@ public class ParallelAwareTilingPass extends TransformPass {
         LinkedList<Loop> nestedLoops = new LinkedList<>();
         new DFIterator<Loop>(loopNest, Loop.class).forEachRemaining(nestedLoops::add);
 
-        CompoundStatement variableDeclarations = new CompoundStatement();
+        DDGraph subGraph = program.getDDGraph().getSubGraph(loopNest);
+        List<Arc> loopCarriedArcs = subGraph.getLoopCarriedDependencesForGraph();
+        List<Arc> allArcs = subGraph.getAllArcs();
 
         List<DependenceVector> dependenceVectors = program.getDDGraph().getDirectionMatrix(nestedLoops);
 
@@ -280,8 +293,26 @@ public class ParallelAwareTilingPass extends TransformPass {
 
         logger.log(Level.FINE, "### ORIGINAL VERSION END ###");
 
+        Expression totalOfInstructions = LoopInstructionsUtils.getTotalOfInstructions(loopNest);
+
+        long cacheInElements = getCacheInElementsTerm(loopNest, cacheSizeInKB);
+
+        Expression rowSize = computeRowDataSize(loopNest);
+        Expression dataFullSize = computeDataSize(loopNest);
+
+        Expression rawTileSize = computeRawTileSize(rowSize, cacheInElements);
+
+        long totalIns = ((IntegerLiteral) totalOfInstructions).getValue();
+        long rawTile = ((IntegerLiteral) rawTileSize).getValue();
+        long balancedTileSize = computeBalancedCrossStripSize(totalIns, rawTile, numOfProcessors);
+
+        SymbolTable variableDeclarations = new CompoundStatement();
+        variableDeclarations = VariableDeclarationUtils.getVariableDeclarationSpace(loopNest.getParent());
+
+        setTileSizeVar(variableDeclarations, balancedTileSize, loopNest);
+
         VersionChooser optimizer = chooserProvider.chooseOptimalVersion(variableDeclarations, loopNest,
-                dependenceVectors, reuseAnalysis);
+                dependenceVectors, reuseAnalysis, balancedTileSize);
 
         TiledLoop leastCostTiledVersion = optimizer.getChoosenVersion();
 
@@ -289,39 +320,63 @@ public class ParallelAwareTilingPass extends TransformPass {
         logger.log(Level.FINE, leastCostTiledVersion.toString());
         logger.log(Level.FINE, "### SELECTED VERSION ###");
 
-        Expression totalOfInstructions = LoopInstructionsUtils.getTotalOfInstructions(loopNest);
-
-        Expression typesValuesInCache = getTypesValuesInCacheSize(loopNest, cache);
-
-        Expression balancedTileSize = computeBalancedCrossStripSize(typesValuesInCache, cores);
-
         replaceTileSize(variableDeclarations, balancedTileSize);
 
         // create two versions if iterations isn't enough to parallelize
 
         ForLoop newLoopNest = loopNest.clone(false);
 
-        Expression dataMatrixSize = computeFullDataSize(loopNest);
-        logger.log(Level.FINE, "DATA_FULL_SIZE_IN_KB", dataMatrixSize.toString());
+        
+        logger.log(Level.FINE, "DATA_FULL_SIZE_IN_KB", rowSize.toString());
 
-        Expression cacheValue = cache;
-        cacheValue = VariableDeclarationUtils.getVariableDeclaredValue(
-                VariableDeclarationUtils.getVariableDeclarationSpace(loopNest), (IDExpression) cache);
+        Expression cacheValueInElements = new IntegerLiteral(cacheInElements);
+        // cacheValue = VariableDeclarationUtils.getVariableDeclaredValue(
+        // VariableDeclarationUtils.getVariableDeclarationSpace(loopNest),
+        // (IDExpression) cache);
 
-        Statement twoVersionsStm = createTwoVersionsStm(totalOfInstructions, cacheValue, dataMatrixSize,
+        Statement twoVersionsStm = createTwoVersionsStm(totalOfInstructions, cacheValueInElements, dataFullSize,
                 newLoopNest,
                 leastCostTiledVersion);
 
         replaceLoop(loopNest, twoVersionsStm);
-        Traversable targetSymbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(twoVersionsStm.getParent());
+        Traversable targetSymbolTable = VariableDeclarationUtils
+                .getVariableDeclarationSpace(twoVersionsStm.getParent());
         if (twoVersionsStm instanceof IfStatement) {
             targetSymbolTable = ((IfStatement) twoVersionsStm).getElseStatement();
         }
 
-        VariableDeclarationUtils.addNewVariableDeclarations(targetSymbolTable,
-                filterValidDeclarations(variableDeclarations, leastCostTiledVersion));
+        // VariableDeclarationUtils.addNewVariableDeclarations(targetSymbolTable,
+        // filterValidDeclarations(variableDeclarations, leastCostTiledVersion));
 
         logger.log(Level.FINE, "### Updated attributes ###");
+
+    }
+
+    private void setTileSizeVar(SymbolTable variableDeclarations, long balancedTileSize, ForLoop loop) {
+        IDExpression tileSizeVar = VariableDeclarationUtils.getIdentifier(variableDeclarations,
+                BALANCED_TILE_SIZE_NAME);
+        if (tileSizeVar == null) {
+            tileSizeVar = VariableDeclarationUtils.declareVariable(variableDeclarations,
+                    BALANCED_TILE_SIZE_NAME,
+                    new IntegerLiteral(balancedTileSize));
+        }
+
+        String loopName = LoopTools.getLoopName(loop);
+        int indexOfHash = loopName.indexOf("#");
+        String loopNumberStr = "-1";
+        if (indexOfHash != -1) {
+            loopNumberStr = "" + loopName.charAt(indexOfHash + 1);
+        }
+
+        if (loopNumberStr.equals("-1")) {
+            return;
+        }
+
+        if (loopNumberStr.equals("0")) {
+            return;
+        }
+        CodeAnnotation annotation = new CodeAnnotation(String.format("%s=%d;", tileSizeVar, balancedTileSize));
+        loop.annotateBefore(annotation);
 
     }
 
@@ -330,13 +385,6 @@ public class ParallelAwareTilingPass extends TransformPass {
                 new IntegerLiteral(numOfProcessors));
 
         return ((Expression) coresIdentifier);
-    }
-
-    private Expression createCacheVariable(SymbolTable variableDeclarations) {
-        Identifier cacheIdentifier = VariableDeclarationUtils.declareVariable(variableDeclarations, CACHE_PARAM_NAME,
-                new IntegerLiteral(cacheSize));
-
-        return ((Expression) cacheIdentifier);
     }
 
     private boolean hasReuse(DataReuseAnalysis reuseAnalysis) {
@@ -350,7 +398,7 @@ public class ParallelAwareTilingPass extends TransformPass {
     }
 
     private Statement createTwoVersionsStm(Expression maxOfInstructions, Expression cache, Expression dataFullSize,
-            Statement serialCode, Statement parallelCode) {
+            Statement noTiledCode, Statement tiledCode) {
 
         Expression instructionsCondition = new BinaryExpression(maxOfInstructions.clone(), BinaryOperator.COMPARE_LE,
                 new IntegerLiteral(MAX_ITERATIONS_TO_PARALLELIZE));
@@ -359,9 +407,9 @@ public class ParallelAwareTilingPass extends TransformPass {
                 cacheCond.clone());
 
         CompoundStatement leastCostVersionStm = new CompoundStatement();
-        leastCostVersionStm.addStatement(parallelCode);
+        leastCostVersionStm.addStatement(tiledCode);
 
-        IfStatement ifStm = new IfStatement(condition, serialCode, leastCostVersionStm);
+        IfStatement ifStm = new IfStatement(condition, noTiledCode, leastCostVersionStm);
         if (!(maxOfInstructions instanceof Literal)
                 || !(cache instanceof Literal)
                 || !(dataFullSize instanceof Literal)) {
@@ -390,9 +438,9 @@ public class ParallelAwareTilingPass extends TransformPass {
 
             }
             if (isProfitableParallelIterations && !isEnoughCache) {
-                return parallelCode.clone();
+                return tiledCode.clone();
             } else {
-                return serialCode.clone();
+                return noTiledCode.clone();
             }
         }
     }
@@ -448,11 +496,11 @@ public class ParallelAwareTilingPass extends TransformPass {
     }
 
     private void replaceTileSize(SymbolTable variableDeclarationSpace,
-            Expression newTileSize) {
+            long newTileSize) {
 
         Identifier balancedTileVariable = VariableDeclarationUtils.declareVariable(variableDeclarationSpace,
                 BALANCED_TILE_SIZE_NAME,
-                newTileSize);
+                new IntegerLiteral(newTileSize));
 
         for (Declaration declaration : variableDeclarationSpace.getDeclarations()) {
             List<Traversable> children = declaration.getChildren();
@@ -484,97 +532,86 @@ public class ParallelAwareTilingPass extends TransformPass {
         }
     }
 
-    //TODO: INtegrate
-    private Expression computeRawTileSize(Loop loop, Expression cache) {
+    // TODO: INtegrate
+    private Expression computeRawTileSize(Expression matrixSize, long cacheInElements) {
+        if (matrixSize instanceof IntegerLiteral) {
+            long N = ((IntegerLiteral) matrixSize).getValue();
+            return new IntegerLiteral(TilingUtils.findLRWBlock(N, cacheInElements));
 
-        List<ArrayAccess> arrayAccesses = new ArrayList<>();
-        new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
+        }
+        return new IntegerLiteral("-1");
 
-        return CacheUtils.getRawBlockSize(cache, arrayAccesses);
     }
 
-    //TODO: INtegrate
+    // TODO: INtegrate
     private Expression computeBalancedCrossStripSize(Expression numOfInstructions, Expression numOfProcessors,
-    Expression rawTileSize) {
+            Expression rawTileSize) {
 
-    // (numOfInstructions / (processors * rawSize)) * processors
-    Expression divisor = Symbolic.multiply(
-            Symbolic.divide(numOfInstructions, Symbolic.multiply(numOfProcessors, rawTileSize)),
-            numOfProcessors);
+        // (numOfInstructions / (processors * rawSize)) * processors
+        Expression divisor = Symbolic.multiply(
+                Symbolic.divide(numOfInstructions, Symbolic.multiply(numOfProcessors, rawTileSize)),
+                numOfProcessors);
 
-    // instructions / ( ( instructions / (processors * rawSize) ) * processors )
-    Expression strip = Symbolic.divide(numOfInstructions, divisor);
-    return strip;
-    }
-
-
-    private Expression computeBalancedCrossStripSize(Expression rawTileSize, Expression numOfProcessors) {
-
-        // Making rawTile size multiple of num of processors
-        Expression strip = Symbolic.divide(rawTileSize, numOfProcessors);
+        // instructions / ( ( instructions / (processors * rawSize) ) * processors )
+        Expression strip = Symbolic.divide(numOfInstructions, divisor);
         return strip;
     }
 
+    private long computeBalancedCrossStripSize(long totalInstructions, long rawTileSize,
+            long numOfProcessors) {
+
+        // Making rawTile size multiple of num of processors
+        long balancingTerm = (long) Math.ceil(totalInstructions / (numOfProcessors * rawTileSize));
+        long tileSize = (totalInstructions) / (balancingTerm * numOfProcessors);
+        return tileSize;
+    }
+
+    private Expression computeDataSize(Loop loop) {
+        List<ArrayAccess> arrayAccesses = new ArrayList<>();
+        new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
+
+        return ArrayUtils.getFullSize(VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent()),
+                arrayAccesses);
+    }
+
     /**
-     * Compute the data full size in bytes
+     * Compute the data full size in elements
      * 
      * @param loop the loop where to obtain the array accesses to calculate the
      *             block size
      * @return the block size in bits to use from the cache
      */
-    private Expression computeFullDataSize(Loop loop) {
+    private Expression computeRowDataSize(Loop loop) {
 
-        // Accessing only using loop bounds
-        Expression upperBound = LoopTools.getUpperBoundExpression(loop);
+        // // Accessing only using loop bounds
+        // Expression upperBound = LoopTools.getUpperBoundExpression(loop);
 
-        return Symbolic.multiply(upperBound, new IntegerLiteral(cacheAlignment));
+        // return Symbolic.multiply(upperBound, new IntegerLiteral(cacheAlignment));
 
         // Full matrices
-        // List<ArrayAccess> arrayAccesses = new ArrayList<>();
+        List<ArrayAccess> arrayAccesses = new ArrayList<>();
 
-        // Set<String> alreadyAdded = new HashSet<>();
-        // new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(access
-        // -> {
-        // String accessName = access.getArrayName().toString();
-        // if (!alreadyAdded.contains(accessName)) {
-        // arrayAccesses.add(access);
-        // alreadyAdded.add(accessName);
+        Set<String> alreadyAdded = new HashSet<>();
+        new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(access -> {
+            String accessName = access.getArrayName().toString();
+            if (!alreadyAdded.contains(accessName)) {
+                arrayAccesses.add(access);
+                alreadyAdded.add(accessName);
 
-        // }
-        // });
+            }
+        });
 
         // return CacheUtils.getRawBlockSize(cache, arrayAccesses);
-        // return
-        // ArrayUtils.getFullSizeInBytes(VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent()),
-        // arrayAccesses);
+        return ArrayUtils.getMaxSize(VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent()),
+                arrayAccesses);
 
     }
 
-    private Expression getTypesValuesInCacheSize(Loop loop, Expression cache) {
+    private long getCacheInElementsTerm(Loop loop, int cache) {
         List<ArrayAccess> arrayAccesses = new ArrayList<>();
         new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
 
-        return CacheUtils.getRawBlockSize(cache, arrayAccesses);
-    }
-
-    public void runLoopInterchage(Loop loopNest) {
-        LoopInterchange loopInterchangePass = new LoopInterchange(program);
-
-        LinkedList<Loop> loops = new LinkedList<>();
-
-        List<Expression> originalOrder = new ArrayList<>();
-
-        new DFIterator<Loop>(loopNest, Loop.class).forEachRemaining(loop -> {
-
-            originalOrder.add(LoopTools.getIndexVariable(loop));
-            loops.add(loop);
-        });
-
-        Map<ForLoop, String> loopMap = new HashMap<>();
-
-        loopInterchangePass.interchangeLoops(loopNest, loops.get(loops.size() - 1), loops, loopMap, originalOrder);
-
-        logger.log(Level.FINE, program.toString());
+        return CacheUtils.getCacheInArrayElements(cache, arrayAccesses);
     }
 
     private DataReuseAnalysis runReuseAnalysis(Loop loopNest) {
@@ -602,6 +639,15 @@ public class ParallelAwareTilingPass extends TransformPass {
 
     }
 
+    private void cloneCodeAnnotations(ForLoop originalLoop, Statement newLoop) {
+        List<Annotation> annotations = originalLoop.getAnnotations();
+        for (Annotation annotation : annotations) {
+            if (annotation instanceof CodeAnnotation) {
+                newLoop.annotateBefore(annotation.clone());
+            }
+        }
+    }
+
     private void replaceLoop(ForLoop originalLoop, Statement newLoop) {
         Traversable originalParent = originalLoop.getParent();
 
@@ -612,6 +658,8 @@ public class ParallelAwareTilingPass extends TransformPass {
                 break;
             }
         }
+
+        cloneCodeAnnotations(originalLoop, newLoop);
 
         originalParent.setChild(originalLoopIdx, newLoop);
     }

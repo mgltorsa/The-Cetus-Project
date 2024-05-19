@@ -15,7 +15,7 @@ import cetus.hir.ConditionalExpression;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
-import cetus.hir.Identifier;
+import cetus.hir.IDExpression;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
 import cetus.hir.Program;
@@ -30,28 +30,27 @@ public class TilingUtils {
 
     public final static String TILE_SUFFIX = "b";
 
-    public static int findLRWBlock(int N, int cache) {
-        int maxWidth = Math.min(N, cache);
-        int addr = N / 2;
-        int di = 0;
-        int dj = 0;
+    public static long findLRWBlock(long N, long cache) {
+        long maxWidth = Math.min(N, cache);
+        long addr = N / 2;
+        long di = 0;
+        long dj = 0;
         while (true) {
             addr = addr + cache;
-            di = (int) Math.floor(addr / N);
-            dj = (int) Math.abs((addr % N) - N / 2);
+            di = (long) Math.floor(addr / N);
+            dj = (long) Math.abs((addr % N) - N / 2);
             if (di >= Math.min(maxWidth, dj)) {
                 return Math.min(maxWidth, dj);
             }
             maxWidth = Math.min(maxWidth, dj);
-
         }
     }
 
-    public static void injectFindLRWBlock(Program program, Expression N, Expression C ){
-        //TODO: Add findLRW algorithm in the program
+    public static void injectFindLRWBlock(Program program, Expression N, int cache) {
+        // TODO: Add findLRW algorithm in the program
     }
 
-    public static Loop createInStripLoop(ForLoop loop, Expression stripExpr, Identifier newIndexVariable)
+    public static Loop createInStripLoop(ForLoop loop, Expression stripExpr, IDExpression newIndexVariable)
             throws Exception {
         Statement originalInitStatement = loop.getInitialStatement();
         List<Traversable> originalInitStatements = originalInitStatement.getChildren();
@@ -79,7 +78,7 @@ public class TilingUtils {
         AssignmentOperator assignmentOperator = oriAssignmentExp.getOperator();
 
         Expression newLoopInitExp = new AssignmentExpression(initLHSExp.clone(), assignmentOperator,
-                newIndexVariable);
+                newIndexVariable.clone());
 
         BinaryExpression originalLoopCondition = (BinaryExpression) originalCondition;
         Expression condRHS = originalLoopCondition.getRHS();
@@ -113,7 +112,7 @@ public class TilingUtils {
         return inStripLoop;
     }
 
-    public static Loop createCrossStripLoop(ForLoop loop, Expression stripExpr, Identifier newIndexVariable,
+    public static Loop createCrossStripLoop(ForLoop loop, Expression stripExpr, IDExpression newIndexVariable,
             Statement inStripLoop) throws Exception {
 
         Statement originalInitStatement = loop.getInitialStatement();
@@ -141,7 +140,8 @@ public class TilingUtils {
         Expression initRHSExp = oriAssignmentExp.getRHS();
         AssignmentOperator assignmentOperator = oriAssignmentExp.getOperator();
 
-        Symbol loopSymbol = newIndexVariable.getSymbol();
+        // Symbol loopSymbol = newIndexVariable.getSymbol();
+        String symbolName = newIndexVariable.getName();
         Expression newLoopInitExp = new AssignmentExpression(newIndexVariable.clone(), assignmentOperator,
                 initRHSExp.clone());
 
@@ -150,10 +150,10 @@ public class TilingUtils {
         Expression condLHS = originalLoopCondition.getLHS();
         BinaryOperator condOperator = originalLoopCondition.getOperator();
 
-        if (loopSymbol.getSymbolName().equals(condLHS.toString())) {
+        if (symbolName.equals(condLHS.toString())) {
             condLHS = newIndexVariable;
 
-        } else if (loopSymbol.getSymbolName().equals(condRHS.toString())) {
+        } else if (symbolName.equals(condRHS.toString())) {
             condRHS = newIndexVariable;
 
         }
@@ -199,14 +199,27 @@ public class TilingUtils {
         }
 
         Symbol loopSymbol = LoopTools.getLoopIndexSymbol(loop);
-        Identifier newIndexVariable = VariableDeclarationUtils.declareVariable(variableDeclarationSpace,
-                loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
 
-        Identifier stripIdentifier = VariableDeclarationUtils.declareVariable(variableDeclarationSpace,
-                loopSymbol.getSymbolName() + TILE_SUFFIX, new IntegerLiteral(strip));
+        IDExpression crossIndex = VariableDeclarationUtils
+                .getIdentifier(variableDeclarationSpace, loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
 
-        Loop inStripLoop = createInStripLoop(loop, stripIdentifier, newIndexVariable);
-        Loop crossStripLoop = createCrossStripLoop(loop, stripIdentifier, newIndexVariable, (Statement) inStripLoop);
+        if (crossIndex == null) {
+            crossIndex = VariableDeclarationUtils.declareVariable(variableDeclarationSpace,
+                    loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
+
+        }
+
+        IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(variableDeclarationSpace,
+                loopSymbol.getSymbolName() + TILE_SUFFIX);
+
+        if (stripIdentifier == null) {
+            stripIdentifier = VariableDeclarationUtils.declareVariable(variableDeclarationSpace,
+                    loopSymbol.getSymbolName() + TILE_SUFFIX, new IntegerLiteral(strip));
+
+        }
+
+        Loop inStripLoop = createInStripLoop(loop, stripIdentifier, crossIndex);
+        Loop crossStripLoop = createCrossStripLoop(loop, stripIdentifier, crossIndex, (Statement) inStripLoop);
 
         return new Loop[] { crossStripLoop, inStripLoop };
 
@@ -282,88 +295,94 @@ public class TilingUtils {
         Loop actualInStripLoop = inStripLoop;
         Loop actualCrossStripLoop = crossStripLoop;
 
-        String inStripSymbol = LoopTools.getLoopIndexSymbol(inStripLoop).getSymbolName();
-        String crossStripSymbol = LoopTools.getLoopIndexSymbol(crossStripLoop).getSymbolName();
+        try {
+            String inStripSymbol = LoopTools.getLoopIndexSymbol(inStripLoop).getSymbolName();
+            String crossStripSymbol = LoopTools.getLoopIndexSymbol(crossStripLoop).getSymbolName();
 
-        // find real object references inside nested loops
-        for (Loop loop : nestedLoops) {
+            // find real object references inside nested loops
+            for (Loop loop : nestedLoops) {
 
-            String loopSymbol = LoopTools.getLoopIndexSymbol(loop).getSymbolName();
+                String loopSymbol = LoopTools.getLoopIndexSymbol(loop).getSymbolName();
 
-            if (loopSymbol.equals(inStripSymbol)) {
-                actualInStripLoop = loop;
-                continue;
+                if (loopSymbol.equals(inStripSymbol)) {
+                    actualInStripLoop = loop;
+                    continue;
+                }
+                if (loopSymbol.equals(crossStripSymbol)) {
+                    actualCrossStripLoop = loop;
+                    continue;
+                }
+
+                if (actualInStripLoop != null && actualCrossStripLoop != null) {
+                    break;
+                }
+
             }
-            if (loopSymbol.equals(crossStripSymbol)) {
-                actualCrossStripLoop = loop;
-                continue;
+
+            DependenceVector newBaseDV = new DependenceVector(nestedLoops);
+
+            int direction = findOriginalDirection(originalDV, actualInStripLoop);
+
+            switch (direction) {
+                case DependenceVector.equal: {
+                    DependenceVector newDV = new DependenceVector(newBaseDV);
+                    newDV.setDirection(actualInStripLoop, DependenceVector.equal);
+                    newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
+
+                    newDVS.add(newDV);
+                    break;
+                }
+
+                case DependenceVector.greater: {
+                    DependenceVector newDV = new DependenceVector(newBaseDV);
+                    newDV.setDirection(actualInStripLoop, DependenceVector.greater);
+                    newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
+
+                    DependenceVector newDV2 = new DependenceVector(newBaseDV);
+                    newDV2.setDirection(actualInStripLoop, DependenceVector.any);
+                    newDV2.setDirection(actualCrossStripLoop, DependenceVector.greater);
+
+                    newDVS.add(newDV);
+                    newDVS.add(newDV2);
+
+                    break;
+                }
+
+                case DependenceVector.less: {
+                    DependenceVector newDV = new DependenceVector(newBaseDV);
+                    newDV.setDirection(actualInStripLoop, DependenceVector.less);
+                    newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
+
+                    DependenceVector newDV2 = new DependenceVector(newBaseDV);
+                    newDV2.setDirection(actualInStripLoop, DependenceVector.any);
+                    newDV2.setDirection(actualCrossStripLoop, DependenceVector.less);
+
+                    newDVS.add(newDV);
+                    newDVS.add(newDV2);
+                    break;
+                }
+
+                default:
+                    break;
             }
 
-            if (actualInStripLoop != null && actualCrossStripLoop != null) {
-                break;
+            for (Loop loop : nestedLoops) {
+                if (loop == actualInStripLoop || loop == actualCrossStripLoop) {
+                    continue;
+                }
+
+                for (DependenceVector newDV : newDVS) {
+                    int originalDirection = findOriginalDirection(originalDV, loop);
+                    newDV.setDirection(loop, originalDirection);
+                }
             }
 
+            return newDVS;
+        } catch (Exception e) {
+            // TODO: handle exception
+            System.err.println(e);
         }
-
-        DependenceVector newBaseDV = new DependenceVector(nestedLoops);
-
-        int direction = findOriginalDirection(originalDV, actualInStripLoop);
-
-        switch (direction) {
-            case DependenceVector.equal: {
-                DependenceVector newDV = new DependenceVector(newBaseDV);
-                newDV.setDirection(actualInStripLoop, DependenceVector.equal);
-                newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-
-                newDVS.add(newDV);
-                break;
-            }
-
-            case DependenceVector.greater: {
-                DependenceVector newDV = new DependenceVector(newBaseDV);
-                newDV.setDirection(actualInStripLoop, DependenceVector.greater);
-                newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-
-                DependenceVector newDV2 = new DependenceVector(newBaseDV);
-                newDV2.setDirection(actualInStripLoop, DependenceVector.any);
-                newDV2.setDirection(actualCrossStripLoop, DependenceVector.greater);
-
-                newDVS.add(newDV);
-                newDVS.add(newDV2);
-
-                break;
-            }
-
-            case DependenceVector.less: {
-                DependenceVector newDV = new DependenceVector(newBaseDV);
-                newDV.setDirection(actualInStripLoop, DependenceVector.less);
-                newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-
-                DependenceVector newDV2 = new DependenceVector(newBaseDV);
-                newDV2.setDirection(actualInStripLoop, DependenceVector.any);
-                newDV2.setDirection(actualCrossStripLoop, DependenceVector.less);
-
-                newDVS.add(newDV);
-                newDVS.add(newDV2);
-                break;
-            }
-
-            default:
-                break;
-        }
-
-        for (Loop loop : nestedLoops) {
-            if (loop == actualInStripLoop || loop == actualCrossStripLoop) {
-                continue;
-            }
-
-            for (DependenceVector newDV : newDVS) {
-                int originalDirection = findOriginalDirection(originalDV, loop);
-                newDV.setDirection(loop, originalDirection);
-            }
-        }
-
-        return newDVS;
+        return null;
     }
 
     private static int findOriginalDirection(DependenceVector dv, Loop targetLoop) {

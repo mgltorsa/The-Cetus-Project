@@ -27,8 +27,8 @@ public class ComplexChooserProvider implements VersionChooserProvider {
     private Logger logger = Logger.getLogger(this.getClass().getSimpleName());
 
     @Override
-    public VersionChooser chooseOptimalVersion(SymbolTable symbolTable, Loop loopNest, List<DependenceVector> dvs,
-            DataReuseAnalysis reuseAnalysis) {
+    public VersionChooser chooseOptimalVersion(SymbolTable symbolTable, ForLoop loopNest, List<DependenceVector> dvs,
+            DataReuseAnalysis reuseAnalysis, long balancedTileSize) {
 
         try {
             return chooseOptimalVersion(loopNest, dvs, createTiledVersions(loopNest, symbolTable, dvs), reuseAnalysis);
@@ -247,7 +247,7 @@ public class ComplexChooserProvider implements VersionChooserProvider {
 
         for (int i = 0; i < loops.size(); i++) {
             ForLoop loop = loops.get(i);
-            position=i;
+            position = i;
             for (DependenceVector dependenceVector : dependenceVectors) {
                 int direction = dependenceVector.getDirection(loop);
                 if (direction != DependenceVector.equal) {

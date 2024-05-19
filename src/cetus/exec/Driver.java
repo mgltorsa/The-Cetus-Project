@@ -12,6 +12,7 @@ import cetus.hir.SymbolTools;
 import cetus.hir.Tools;
 import cetus.transforms.*;
 import cetus.transforms.tiling.pawTiling.ParallelAwareTilingPass;
+import omp2gpu.analysis.OmpAnalysis;
 
 import java.io.*;
 import java.util.Arrays;
@@ -929,15 +930,15 @@ public class Driver {
         }
 
         if (getOptionValue(ParallelAwareTilingPass.PAW_TILING) != null) {
-            try {
-                TransformPass.run(new LoopInterchange(program));
+            // try {
+            //     TransformPass.run(new LoopInterchange(program));
 
-            } catch (Exception e) {
-                if (PrintTools.getVerbosity() > 1) {
-                    System.err.println("ERROR EXECUTING LOOP INTERCHANGE DURING TILING");
-                    e.printStackTrace();
-                }
-            }
+            // } catch (Exception e) {
+            //     if (PrintTools.getVerbosity() > 1) {
+            //         System.err.println("ERROR EXECUTING LOOP INTERCHANGE DURING TILING");
+            //         e.printStackTrace();
+            //     }
+            // }
             TransformPass.run(new ParallelAwareTilingPass(program, options));
         }
 
