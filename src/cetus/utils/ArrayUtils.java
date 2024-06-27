@@ -182,7 +182,7 @@ public class ArrayUtils {
                 }
             }
 
-            dataSize = Math.max(dataSize, arraySize);
+            dataSize = dataSize+ arraySize;
         }
 
         return new IntegerLiteral(dataSize);

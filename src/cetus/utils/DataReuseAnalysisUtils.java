@@ -1,13 +1,13 @@
 package cetus.utils;
 
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 
 import cetus.hir.Expression;
 
 public class DataReuseAnalysisUtils {
     
-    public static final String printLoopCosts(HashMap<Expression, ?> loopCostMap) {
+    public static final String printLoopCosts(Map<Expression, ?> loopCostMap) {
 
         String format = "";
         format += "#### Loop costs ####\n";

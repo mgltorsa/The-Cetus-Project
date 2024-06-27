@@ -409,24 +409,26 @@ public class Driver {
                 null,
                 "0",
                 "N",
-                "To apply parallel aware tiling. Not fully implemented yet");
+                "Apply the parallel aware tiling algorithm. (ON=0):"
+                + "\n =0 Full tiles generation algorithm. Generates all the possible tiles and choose one based on a parallelism-cost model. (EXPERIMENTAL)"
+                + "\n =1 Nth-Tiling Algorithm. Use the reuse analysis information to sort and tile the nth-loops of a loop nest.");
 
         options.add(options.TRANSFORM,
                 ParallelAwareTilingPass.CORES_PARAM_NAME,
                 null,
                 "" + ParallelAwareTilingPass.DEFAULT_PROCESSORS,
                 "N",
-                "To apply parallel aware tiling. Not fully implemented yet");
+                "To define the number of cores to be used for parallel aware tiling. (default=4). \nThis data is used for load balancing across cores.");
 
         options.add(options.TRANSFORM,
                 ParallelAwareTilingPass.CACHE_PARAM_NAME,
                 null,
                 "" + ParallelAwareTilingPass.DEFAULT_CACHE_SIZE,
                 "N",
-                "To define cache size in KB");
+                "Define the cache size in KiB. (default=32768 ~32MiB). \nUsed for calculating tile sizes.");
 
         options.add(options.TRANSFORM, ParallelAwareTilingPass.NTH_ORDER_PARAM, null,
-                "" + ParallelAwareTilingPass.DEFAULT_NTH_ORDER, "N", "To define the level of tiling");
+                "" + ParallelAwareTilingPass.DEFAULT_NTH_ORDER, "N", "To define the level of tiling. The level will be MAX(tiling_level,loop_size). \nUsed by the NTH-Tiling algorithm");
     }
 
     /**

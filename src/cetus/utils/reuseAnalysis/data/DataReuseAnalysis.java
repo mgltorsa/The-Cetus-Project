@@ -1,7 +1,7 @@
-package cetus.utils.reuseAnalysis;
+package cetus.utils.reuseAnalysis.data;
 
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import cetus.hir.Expression;
 import cetus.hir.Loop;
@@ -10,7 +10,7 @@ public interface DataReuseAnalysis {
 
     public Loop getLoopNest();
 
-    public HashMap<Expression, ?> getLoopCosts();
+    public Map<Expression, ?> getLoopCosts();
 
     /**
      * Returns the indexes of each loop in the loop nest, starting from the less

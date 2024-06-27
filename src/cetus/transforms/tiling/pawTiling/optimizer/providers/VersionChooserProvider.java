@@ -4,10 +4,9 @@ import java.util.List;
 
 import cetus.analysis.DependenceVector;
 import cetus.hir.ForLoop;
-import cetus.hir.Loop;
 import cetus.hir.SymbolTable;
 import cetus.transforms.tiling.pawTiling.optimizer.VersionChooser;
-import cetus.utils.reuseAnalysis.DataReuseAnalysis;
+import cetus.utils.reuseAnalysis.data.DataReuseAnalysis;
 
 public interface VersionChooserProvider {
 

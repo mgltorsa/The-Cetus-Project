@@ -1,4 +1,4 @@
-package cetus.utils.reuseAnalysis;
+package cetus.utils.reuseAnalysis.algorithm;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,57 +23,20 @@ import cetus.hir.Traversable;
 import cetus.utils.AccessesAnalysisUtils;
 import cetus.utils.LoopCostAnalysisUtils;
 import cetus.utils.RefGroupAnalysisUtils;
-import cetus.utils.reuseAnalysis.factory.ReuseAnalysisFactory;
+import cetus.utils.reuseAnalysis.data.DataReuseAnalysis;
+import cetus.utils.reuseAnalysis.data.SimpleDataReuseAnalysis;
 
-public class SimpleReuseAnalysisFactory implements ReuseAnalysisFactory {
+public class SimpleReuseAnalysis implements ReuseAnalysis {
 
     private static final int DEFAULT_CACHE_SIZE = 64;
 
-    private class SimpleDataReuseAnalysis implements DataReuseAnalysis {
-
-        private Loop loopNest;
-        private HashMap<Expression, ?> loopCosts = new HashMap<>();
-        private List<Expression> loopNestMemoryOrder = new ArrayList<>();
-
-        public SimpleDataReuseAnalysis(Loop loopNest, HashMap<Expression, ?> loopCosts,
-                List<Expression> loopNestMemoryOrder) {
-            this.loopNest = loopNest;
-            this.loopCosts = loopCosts;
-            this.loopNestMemoryOrder = loopNestMemoryOrder;
-        }
-
-        @Override
-        public Loop getLoopNest() {
-            return loopNest;
-        }
-
-        @Override
-        public HashMap<Expression, ?> getLoopCosts() {
-            return loopCosts;
-        }
-
-        @Override
-        public List<Expression> getLoopNestMemoryOrder() {
-            return loopNestMemoryOrder;
-        }
-
-        public boolean hasReuse() {
-
-            boolean isReusable = true;
-
-            isReusable &= loopCosts.size() > 0
-                    && loopNestMemoryOrder.size() > 0;
-
-            return isReusable;
-        }
-    }
 
     /**
      * It will use the
-     * {@link SimpleReuseAnalysisFactory#getReuseAnalysis(Loop, int)} with the
+     * {@link SimpleReuseAnalysis#getReuseAnalysis(Loop, int)} with the
      * default cache size value: {@value #DEFAULT_CACHE_SIZE}
      * 
-     * @see SimpleReuseAnalysisFactory#runReuseAnalysis()
+     * @see SimpleReuseAnalysis#runReuseAnalysis()
      * 
      * @return - Order of the loops in the nest for max reusability. From the less
      *         reuse to the max.

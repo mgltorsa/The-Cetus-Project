@@ -1,9 +1,9 @@
-package cetus.utils.reuseAnalysis.factory;
+package cetus.utils.reuseAnalysis.algorithm;
 
 import cetus.hir.Loop;
-import cetus.utils.reuseAnalysis.DataReuseAnalysis;
+import cetus.utils.reuseAnalysis.data.DataReuseAnalysis;
 
-public interface ReuseAnalysisFactory {
+public interface ReuseAnalysis {
     public DataReuseAnalysis getReuseAnalysis(Loop loopNest);
     public DataReuseAnalysis getReuseAnalysis(Loop loopNest, int cacheSize);
 }

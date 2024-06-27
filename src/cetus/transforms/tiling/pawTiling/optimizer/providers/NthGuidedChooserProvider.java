@@ -26,7 +26,7 @@ import cetus.transforms.tiling.pawTiling.ParallelAwareTilingPass;
 import cetus.transforms.tiling.pawTiling.optimizer.NthVersionChooser;
 import cetus.transforms.tiling.pawTiling.optimizer.VersionChooser;
 import cetus.utils.VariableDeclarationUtils;
-import cetus.utils.reuseAnalysis.DataReuseAnalysis;
+import cetus.utils.reuseAnalysis.data.DataReuseAnalysis;
 
 public class NthGuidedChooserProvider implements VersionChooserProvider {
 
@@ -60,7 +60,7 @@ public class NthGuidedChooserProvider implements VersionChooserProvider {
             DataReuseAnalysis reuseAnalysis, long balancedTileSize) throws Exception {
 
         List<Expression> reusableOrder = reuseAnalysis.getLoopNestMemoryOrder();
-        Collections.reverse(reusableOrder);
+        // Collections.reverse(reusableOrder);
 
         int reusableLoops = reusableOrder.size();
 
@@ -105,7 +105,11 @@ public class NthGuidedChooserProvider implements VersionChooserProvider {
 
         TiledLoop curLoop = new TiledLoop(((ForLoop) loopNest), dvs);
         List<DependenceVector> curDvs = dvs;
-        for (int i = 0; i < loops.size() && maxTilingLvl > 0; i++) {
+        int i = 1;
+        if(loops.size() <= 2 ){
+            i=0;
+        }
+        for (; i < loops.size() && maxTilingLvl > 0; i++) {
             int targetLoopPos = getLoopPosByIndex(curLoop, reusableOrder.get(i));
 
             try {

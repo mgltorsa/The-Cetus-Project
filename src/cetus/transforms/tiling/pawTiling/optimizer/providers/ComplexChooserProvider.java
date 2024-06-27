@@ -18,7 +18,7 @@ import cetus.transforms.tiling.TiledLoop;
 import cetus.transforms.tiling.TilingUtils;
 import cetus.transforms.tiling.pawTiling.optimizer.ComplexVersionChooser;
 import cetus.transforms.tiling.pawTiling.optimizer.VersionChooser;
-import cetus.utils.reuseAnalysis.DataReuseAnalysis;
+import cetus.utils.reuseAnalysis.data.DataReuseAnalysis;
 
 public class ComplexChooserProvider implements VersionChooserProvider {
 

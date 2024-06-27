@@ -1,4 +1,4 @@
-# The Cetus Project with Subscripted subscript analysis
+# The Cetus Project with Parallel Aware Tiling
 
 We have developed a new analysis technique for the automatic parallelization of subsripted
 subscript loops. The technique analyzes loops that define and/or modify the subscript array

@@ -53,7 +53,6 @@ import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
 import cetus.hir.Symbolic;
 import cetus.hir.Traversable;
-import cetus.transforms.LoopInterchange;
 import cetus.transforms.TransformPass;
 import cetus.transforms.tiling.TiledLoop;
 import cetus.transforms.tiling.TilingUtils;
@@ -66,9 +65,11 @@ import cetus.utils.ArrayUtils;
 import cetus.utils.CacheUtils;
 import cetus.utils.DataReuseAnalysisUtils;
 import cetus.utils.VariableDeclarationUtils;
-import cetus.utils.reuseAnalysis.DataReuseAnalysis;
-import cetus.utils.reuseAnalysis.SimpleReuseAnalysisFactory;
-import cetus.utils.reuseAnalysis.factory.ReuseAnalysisFactory;
+import cetus.utils.reuseAnalysis.algorithm.ReuseAnalysis;
+import cetus.utils.reuseAnalysis.algorithm.SimpleReuseAnalysis;
+import cetus.utils.reuseAnalysis.algorithm.TemporalReuseAnalysis;
+import cetus.utils.reuseAnalysis.data.DataReuseAnalysis;
+
 
 public class ParallelAwareTilingPass extends TransformPass {
 
@@ -78,7 +79,7 @@ public class ParallelAwareTilingPass extends TransformPass {
     public final static int NON_DISTRIBUTED_CACHE_OPTION = 0;
 
     public final static String CORES_PARAM_NAME = "cores";
-    public final static String CACHE_PARAM_NAME = "cacheSize";
+    public final static String CACHE_PARAM_NAME = "cacheSizeInKiB";
 
     public final static int DEFAULT_PROCESSORS = 4;
     public final static int DEFAULT_CACHE_SIZE = 32 * 1024; // 32 KiBi = 32 * 1024 bits
@@ -101,7 +102,7 @@ public class ParallelAwareTilingPass extends TransformPass {
 
     private PawAnalysisUtils pawAnalysisUtils = new PawAnalysisUtils();
 
-    private ReuseAnalysisFactory reuseAnalysisFactory;
+    private ReuseAnalysis reuseAnalysisFactory;
 
     private VersionChooserProvider chooserProvider;
 
@@ -110,11 +111,11 @@ public class ParallelAwareTilingPass extends TransformPass {
     }
 
     public ParallelAwareTilingPass(Program program, CommandLineOptionSet commandLineOptions) {
-        this(program, commandLineOptions, new SimpleReuseAnalysisFactory());
+        this(program, commandLineOptions, new TemporalReuseAnalysis());
     }
 
     public ParallelAwareTilingPass(Program program, CommandLineOptionSet commandLineOptions,
-            ReuseAnalysisFactory reuseAnalysisFactory) {
+            ReuseAnalysis reuseAnalysisFactory) {
 
         this(program, commandLineOptions, reuseAnalysisFactory,
                 commandLineOptions.getValue(PAW_TILING) != null && commandLineOptions.getValue(PAW_TILING).equals("1")
@@ -123,7 +124,7 @@ public class ParallelAwareTilingPass extends TransformPass {
     }
 
     public ParallelAwareTilingPass(Program program, CommandLineOptionSet commandLineOptions,
-            ReuseAnalysisFactory reuseAnalysisFactory, VersionChooserProvider chooserFactory) {
+            ReuseAnalysis reuseAnalysisFactory, VersionChooserProvider chooserFactory) {
         super(program);
 
         if (commandLineOptions.getValue("verbosity").equals("1")) {
@@ -183,6 +184,8 @@ public class ParallelAwareTilingPass extends TransformPass {
 
     @Override
     public void start() {
+        
+        prepare();
 
         List<Loop> outermostLoops = LoopTools.getOutermostLoops(program);
 
@@ -231,6 +234,10 @@ public class ParallelAwareTilingPass extends TransformPass {
 
         reRunPasses();
 
+    }
+
+    private void prepare() {
+    //    TransformPass.run(new LoopInterchange(program));
     }
 
     public void reRunPasses() {
@@ -437,11 +444,11 @@ public class ParallelAwareTilingPass extends TransformPass {
                 isEnoughCache = cacheSize > fullSizeData;
 
             }
-            if (isProfitableParallelIterations && !isEnoughCache) {
+            // if (isProfitableParallelIterations) {
                 return tiledCode.clone();
-            } else {
-                return noTiledCode.clone();
-            }
+            // } else {
+            //     return noTiledCode.clone();
+            // }
         }
     }
 

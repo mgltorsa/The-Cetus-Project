@@ -2,13 +2,72 @@
   "version": "0.2.0",
 
   "configurations": [
-    
+    {
+      "type": "java",
+      "name": "Params",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/medley/floyd-warshall",
+        "CFLAGS":""
+      }, 
+      "console": "integratedTerminal",
+    },
+    {
+      "type": "java",
+      "name": "POLY floydWarshall",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "-alias=2 -paw-tiling  -tiling-level=1 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/medley/floyd-warshall/floyd-warshall-original.c",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/medley/floyd-warshall",
+        "CFLAGS":""
+      }, 
+      "console": "integratedTerminal",
+    },
+    {
+      "type": "java",
+      "name": "POLY heat3d",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "-paw-tiling -alias=2 -tiling-level=1 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/stencils/heat-3d/heat-3d.c",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/stencils/heat-3d",
+        "CFLAGS":""
+      }, 
+      "console": "integratedTerminal",
+    },
+    {
+      "type": "java",
+      "name": "NAS SP compute_rhs",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "-paw-tiling -alias=2 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C/SP/rhs-modi.c",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C/common:/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C/SP",
+      },
+      "console": "integratedTerminal",
+      "javaExec": "/usr/bin/java"
+    },
+    {
+      "type": "java",
+      "name": "POLY correlation",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "-paw-tiling -tiling-level=1 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/datamining/correlation/correlation-original.c",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/datamining/correlation",
+        "CFLAGS":""
+      }, 
+      "console": "integratedTerminal",
+    },
     {
       "type": "java",
       "name": "POLY mvt",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-paw-tiling -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/mvt/mvt.c",
+      "args": "-paw-tiling -alias=2 -tiling-level=1 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/mvt/mvt.c",
       "env": {
         "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/mvt",
         "CFLAGS":""
@@ -20,7 +79,7 @@
       "name": "POLY atax",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-paw-tiling -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/atax/atax-original.c",
+      "args": "-paw-tiling -tiling-level=2 -alias=2 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/atax/atax-original.c",
       "env": {
         "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/atax",
         "CFLAGS":""
@@ -32,7 +91,7 @@
       "name": "POLY 2mm",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-paw-tiling -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/2mm/2mm-original.c",
+      "args": "-paw-tiling -tiling-level=2 -alias=2 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/2mm/2mm-original.c",
       "env": {
         "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/2mm",
         "CFLAGS":""
@@ -44,7 +103,7 @@
       "name": "POLY 3mm tiling2",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-paw-tiling -tiling-level=2 -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
+      "args": "-alias=2 -paw-tiling -tiling-level=1 -cacheSize=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
       "env": {
         "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm",
         "CFLAGS":""
@@ -53,10 +112,22 @@
     },
     {
       "type": "java",
-      "name": "POLY 3mm",
+      "name": "POLY 3mm LOOP_INTER",
       "request": "launch",
       "mainClass": "cetus.exec.Driver",
-      "args": "-paw-tiling -alias=2 -cacheSize=8192 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
+      "args": "-loop_interchange -alias=2 -cacheSizeInKB=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
+      "env": {
+        "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm",
+        "CFLAGS":""
+      }, 
+      "console": "integratedTerminal",
+    },
+    {
+      "type": "java",
+      "name": "POLY 3mm Tiling",
+      "request": "launch",
+      "mainClass": "cetus.exec.Driver",
+      "args": "-alias=2 -paw-tiling -tiling-level=1 -cacheSizeInKB=25600 -cores=4 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm/3mm-original.c",
       "env": {
         "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2/linear-algebra/kernels/3mm",
         "CFLAGS":""
