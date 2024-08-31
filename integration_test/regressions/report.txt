@@ -1,0 +1,4 @@
+Parameters: []
+Validation Folder: /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Cetus_default/validation
+Test Folder: /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Cetus_default
+Do you want to run all tests? Y or N: Running all tests in this directory......
