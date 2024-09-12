@@ -30,8 +30,12 @@ public class CodeLLamaTransformer implements LLMTransformer {
     }
 
     private HttpRequest createHTTPRequest(JSONObject body) {
+        String url = System.getenv("HF_URL");
+        if(url == null || url.isEmpty()){
+            url = "https://rjbq4yphmt93o96e.us-east-1.aws.endpoints.huggingface.cloud";
+        }
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://rjbq4yphmt93o96e.us-east-1.aws.endpoints.huggingface.cloud"))
+                .uri(URI.create(url))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
 
@@ -44,11 +48,11 @@ public class CodeLLamaTransformer implements LLMTransformer {
     public LLMResponse transform(String promptTemplate, String programSection, BasicModelParameters modelParameters)
             throws Exception {
 
-        String prompt = promptTemplate.replace("{{src-code}}", programSection.substring(0, programSection.length() / 3))
+        String prompt = promptTemplate.replace("{{src-code}}", programSection)
                 .replace("{{mask}}", "");
 
         String inputs = "<s>Source: system\n\n You are a source to source C code automatic paralellizing compiler <step> ";
-        inputs += "Source: user\n\n " + prompt.replaceAll("\n", " ") + " <step> ";
+        inputs += "Source: user\n\n" + prompt.replaceAll("\n", " ") + " <step> ";
         inputs += "Source: assistant\nDestination: user\n\n ";
         JSONObject obj = new JSONObject();
 

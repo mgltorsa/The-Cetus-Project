@@ -90,7 +90,7 @@ public class LLMOptimizationPass extends TransformPass {
         String prompt = "";
         String line = null;
         while ((line = br.readLine()) != null) {
-            prompt += line;
+            prompt += line + System.lineSeparator();
         }
         br.close();
         return prompt;
@@ -589,29 +589,27 @@ public class LLMOptimizationPass extends TransformPass {
                     String cotFolder = getCotFolder(
                             transformer.getModel() + "_" + temperatureSuffix + "_" + topPSuffix);
 
-                    for (int index = 0; index < 4; index++) {
+                    if (shouldInstruct) {
+                        List<CompletableFuture<Void>> tasksInstructions = callCodeTransformation(executorService,
+                                section,
+                                transformer,
+                                modelParameters, instructionsFolder, instructionsPrompt);
 
-                        if (shouldInstruct) {
-                            List<CompletableFuture<Void>> tasksInstructions = callCodeTransformation(executorService,
-                                    section,
-                                    transformer,
-                                    modelParameters, instructionsFolder, instructionsPrompt);
-
-                            for (CompletableFuture<Void> task : tasksInstructions) {
-                                allTasks.add(task);
-                            }
-                        }
-
-                        if (shouldCot) {
-                            List<CompletableFuture<Void>> tasksCot = callCodeTransformation(executorService, section,
-                                    transformer,
-                                    modelParameters, cotFolder, cotPrompt);
-
-                            for (CompletableFuture<Void> task : tasksCot) {
-                                allTasks.add(task);
-                            }
+                        for (CompletableFuture<Void> task : tasksInstructions) {
+                            allTasks.add(task);
                         }
                     }
+
+                    if (shouldCot) {
+                        List<CompletableFuture<Void>> tasksCot = callCodeTransformation(executorService, section,
+                                transformer,
+                                modelParameters, cotFolder, cotPrompt);
+
+                        for (CompletableFuture<Void> task : tasksCot) {
+                            allTasks.add(task);
+                        }
+                    }
+                    
                 }
 
                 allTasks.forEach(CompletableFuture::join);
