@@ -53,297 +53,102 @@ int main()
 	int i;
 	int j;
 	int _ret_val_0;
-	int cores = 4;
-	int cacheSize = 8192;
-	if ((10<=100000)&&(cacheSize>144))
+	#pragma cetus private(k) 
+	#pragma loop name main#0 
+	#pragma cetus parallel 
+	/*
+	Disabled due to low profitability: #pragma omp parallel for private(k)
+	*/
+	for (k=0; k<10; k ++ )
 	{
-		#pragma loop name main#0 
-		#pragma cetus private(k) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(k)
-		for (k=0; k<10; k ++ )
-		{
-			a[k]=k;
-			b[k]=(k-10);
-			c[k]=1;
-		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		#pragma loop name main#1 
-		#pragma cetus private(k) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(k)
-		for (k=0; k<10; k ++ )
-		{
-			a[k]=k;
-			b[k]=(k-10);
-			c[k]=1;
-		}
+		a[k]=k;
+		b[k]=(k-10);
+		c[k]=1;
 	}
 	/* Flow dependence */
-	if ((10000<=100000)&&(cacheSize>159984))
+	#pragma cetus private(i) 
+	#pragma loop name main#1 
+	for (i=1; i<10000; i ++ )
 	{
-		#pragma loop name main#2 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i]=b[i];
-			c[i]=a[i-1];
-		}
+		a[i]=b[i];
+		c[i]=a[i-1];
 	}
-	else
+	#pragma cetus private(i) 
+	#pragma loop name main#2 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i)
+	for (i=1; i<10000; i ++ )
 	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		#pragma loop name main#3 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i]=b[i];
-			c[i]=a[i-1];
-		}
-	}
-	if ((10000<=100000)&&(cacheSize>159984))
-	{
-		#pragma loop name main#4 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i]=b[i];
-			c[i]=(a[i]+b[i-1]);
-		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		#pragma loop name main#5 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i]=b[i];
-			c[i]=(a[i]+b[i-1]);
-		}
+		a[i]=b[i];
+		c[i]=(a[i]+b[i-1]);
 	}
 	/* Antidependence */
-	if ((10000<=100000)&&(cacheSize>159984))
+	#pragma cetus private(i) 
+	#pragma loop name main#3 
+	for (i=1; i<10000; i ++ )
 	{
-		#pragma loop name main#6 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i-1]=b[i];
-			c[i]=a[i];
-		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		#pragma loop name main#7 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i-1]=b[i];
-			c[i]=a[i];
-		}
+		a[i-1]=b[i];
+		c[i]=a[i];
 	}
 	/* Output dependence */
-	if ((10000<=100000)&&(cacheSize>159984))
+	#pragma cetus private(i) 
+	#pragma loop name main#4 
+	for (i=1; i<10000; i ++ )
 	{
-		#pragma loop name main#8 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
-		{
-			a[i]=b[i];
-			a[i+1]=c[i];
-		}
+		a[i]=b[i];
+		a[i+1]=c[i];
 	}
-	else
+	#pragma cetus private(i, j) 
+	#pragma loop name main#5 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i, j)
+	for (i=0; i<10000; i ++ )
 	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		#pragma loop name main#9 
-		#pragma cetus private(i) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i)
-		for (i=1; i<10000; i ++ )
+		#pragma cetus private(j) 
+		#pragma loop name main#5#0 
+		for (j=0; j<10000; j ++ )
 		{
-			a[i]=b[i];
-			a[i+1]=c[i];
-		}
-	}
-	if ((100000000<=100000)&&(cacheSize>159984))
-	{
-		#pragma loop name main#10 
-		#pragma cetus private(i, j) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j)
-		for (i=0; i<10000; i ++ )
-		{
-			#pragma loop name main#10#0 
-			#pragma cetus private(j) 
-			for (j=0; j<10000; j ++ )
-			{
-				d[i][j]=(i+j);
-			}
-		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		int jj;
-		int jTile = balancedTileSize;
-		#pragma loop name main#11 
-		#pragma cetus private(i, j, jj) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j, jj)
-		for ((jj=0); jj<10000; jj+=jTile)
-		{
-			#pragma loop name main#11#0 
-			#pragma cetus private(i, j) 
-			for (i=0; i<10000; i ++ )
-			{
-				#pragma loop name main#11#0#0 
-				#pragma cetus private(j) 
-				for ((j=jj); j<(((jTile+jj)<10000) ? (jTile+jj) : 10000); j ++ )
-				{
-					d[i][j]=(i+j);
-				}
-			}
+			d[i][j]=(i+j);
 		}
 	}
 	/* loop interchange */
-	if ((100000000<=100000)&&(cacheSize>159984))
+	#pragma cetus private(i, j) 
+	#pragma loop name main#6 
+	for (i=0; i<10000; i ++ )
 	{
-		#pragma loop name main#12 
-		#pragma cetus private(i, j) 
+		#pragma cetus private(j) 
+		#pragma loop name main#6#0 
 		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j)
-		for (i=0; i<10000; i ++ )
+		#pragma omp parallel for private(j)
+		for (j=0; j<10000; j ++ )
 		{
-			#pragma loop name main#12#0 
-			#pragma cetus private(j) 
-			for (j=0; j<10000; j ++ )
-			{
-				d[i+1][j+2]=(d[i][j]+1);
-			}
+			d[i+1][j+2]=(d[i][j]+1);
 		}
 	}
-	else
+	#pragma cetus private(i, j) 
+	#pragma loop name main#7 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i, j)
+	for (i=0; i<10000; i ++ )
 	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		int jj;
-		int jTile = balancedTileSize;
-		#pragma loop name main#13 
-		#pragma cetus private(i, j, jj) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j, jj)
-		for ((jj=0); jj<10000; jj+=jTile)
+		#pragma cetus private(j) 
+		#pragma loop name main#7#0 
+		for (j=0; j<10000; j ++ )
 		{
-			#pragma loop name main#13#0 
-			#pragma cetus private(i, j) 
-			for (i=0; i<10000; i ++ )
-			{
-				#pragma loop name main#13#0#0 
-				#pragma cetus private(j) 
-				for ((j=jj); j<(((jTile+jj)<10000) ? (jTile+jj) : 10000); j ++ )
-				{
-					d[i+1][j+2]=(d[i][j]+1);
-				}
-			}
+			d[i][j+2]=(d[i][j]+1);
 		}
 	}
-	if ((100000000<=100000)&&(cacheSize>159984))
+	#pragma cetus private(i, j) 
+	#pragma loop name main#8 
+	for (i=0; i<10000; i ++ )
 	{
-		#pragma loop name main#14 
-		#pragma cetus private(i, j) 
+		#pragma cetus private(j) 
+		#pragma loop name main#8#0 
 		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j)
-		for (i=0; i<10000; i ++ )
+		#pragma omp parallel for private(j)
+		for (j=0; j<10000; j ++ )
 		{
-			#pragma loop name main#14#0 
-			#pragma cetus private(j) 
-			for (j=0; j<10000; j ++ )
-			{
-				d[i][j+2]=(d[i][j]+1);
-			}
-		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		int jj;
-		int jTile = balancedTileSize;
-		#pragma loop name main#15 
-		#pragma cetus private(i, j, jj) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j, jj)
-		for ((jj=0); jj<10000; jj+=jTile)
-		{
-			#pragma loop name main#15#0 
-			#pragma cetus private(i, j) 
-			for (i=0; i<10000; i ++ )
-			{
-				#pragma loop name main#15#0#0 
-				#pragma cetus private(j) 
-				for ((j=jj); j<(((jTile+jj)<10000) ? (jTile+jj) : 10000); j ++ )
-				{
-					d[i][j+2]=(d[i][j]+1);
-				}
-			}
-		}
-	}
-	if ((100000000<=100000)&&(cacheSize>159984))
-	{
-		#pragma loop name main#16 
-		#pragma cetus private(i, j) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j)
-		for (i=0; i<10000; i ++ )
-		{
-			#pragma loop name main#16#0 
-			#pragma cetus private(j) 
-			for (j=0; j<10000; j ++ )
-			{
-				d[i+1][j-2]=(d[i][j]+1);
-			}
-		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		int jj;
-		int jTile = balancedTileSize;
-		#pragma loop name main#17 
-		#pragma cetus private(i, j, jj) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i, j, jj)
-		for ((jj=0); jj<10000; jj+=jTile)
-		{
-			#pragma loop name main#17#0 
-			#pragma cetus private(i, j) 
-			for (i=0; i<10000; i ++ )
-			{
-				#pragma loop name main#17#0#0 
-				#pragma cetus private(j) 
-				for ((j=jj); j<(((jTile+jj)<10000) ? (jTile+jj) : 10000); j ++ )
-				{
-					d[i+1][j-2]=(d[i][j]+1);
-				}
-			}
+			d[i+1][j-2]=(d[i][j]+1);
 		}
 	}
 	_ret_val_0=0;

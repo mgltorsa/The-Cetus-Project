@@ -42,46 +42,51 @@ wchar_t uses Unicode 10.0.0.  Version 10.0 of the Unicode Standard is
    - 3 additional Zanabazar Square characters
 */
 /*
-Scalar Reduction
 
 
 
-  The loop contains a scalar reduction operation.
+
+  Array Privatization Example
+
+
+
+  The variable t is an array used temporarily during a single iteration of the
+
+  outer loop. No value of t is used in an iteration other than the one that
+
+  produced it. Without privatization, executing different iterations in
+
+  parallel would create conflicts on accesses to t.  Declaring t private gives
+
+  each thread a separate storage space, avoiding these conflicts.
 
 
 
 
 */
+/* #include <math.h> */
 int main()
 {
-	int a[10000], c[10000];
-	int b = 1, i;
+	float a[1000][1000], b[1000][1000], t[1000];
+	int i, j;
 	int _ret_val_0;
-	int cores = 4;
-	int cacheSize = 8192;
-	if ((10000<=100000)&&(cacheSize>159984))
+	#pragma cetus private(i, j, t) 
+	#pragma loop name main#0 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i, j, t)
+	for (i=1; i<1000; i ++ )
 	{
-		#pragma loop name main#0 
-		#pragma cetus private(i) 
-		#pragma cetus reduction(+: b) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i) reduction(+: b)
-		for (i=0; i<10000; i ++ )
+		#pragma cetus private(j) 
+		#pragma loop name main#0#0 
+		for (j=1; j<1000; j ++ )
 		{
-			b=(b+a[i]);
+			t[j]=(a[i][j]+b[i][j]);
 		}
-	}
-	else
-	{
-		int balancedTileSize = ((cacheSize/4)/cores);
-		#pragma loop name main#1 
-		#pragma cetus private(i) 
-		#pragma cetus reduction(+: b) 
-		#pragma cetus parallel 
-		#pragma omp parallel for private(i) reduction(+: b)
-		for (i=0; i<10000; i ++ )
+		#pragma cetus private(j) 
+		#pragma loop name main#0#1 
+		for (j=1; j<1000; j ++ )
 		{
-			b=(b+a[i]);
+			b[i][j]=(t[j]+sqrt(t[j]));
 		}
 	}
 	_ret_val_0=0;

@@ -1,4 +1,16 @@
-Parameters: []
-Validation Folder: /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Cetus_default/validation
-Test Folder: /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Cetus_default
-Do you want to run all tests? Y or N: Running all tests in this directory......
+Parameters: ['-paw-tiling', '-cacheSize=8192', '-cores=4']
+Validation Folder: /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Parallel_aware_tiling/validation
+Test Folder: /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Parallel_aware_tiling
+Running all tests in this directory......
+Running test:  /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Parallel_aware_tiling/test_ArrayDep.c
+Running test:  /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Parallel_aware_tiling/test_ArrayPriv.c
+Integration tests took 0.05 seconds.
+Average tests time 0.03 seconds.
+**********************************************
+
+
+Found 2 test cases
+Passed =  1
+Failed =  1
+Following tests failed:
+   /mnt/d/workspace/java/cetus/The-Cetus-Project/integration_test/Parallel_aware_tiling/test_ArrayPriv.c

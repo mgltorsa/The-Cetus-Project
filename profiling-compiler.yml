@@ -1,0 +1,12 @@
+- id: ProfilingComp:1.0
+    name: Profiling Compiler.
+    status: AlphaRelease.
+    website: none
+    description: The Profiling compiler V1.0 collects critical data such as loop upper bounds, data types, the number of mathematical operations, and other static features to enhance performance insights.
+    owner: Miguel Rosas, Miguel Torres
+    primaryThrust: CI4AI
+    targetIcicleRelease: 2024-09
+    componentVersion: 1.0
+    licenseUrl: https://opensource.org/license/bsd-3-clause
+    publicAccess: true
+    restrictedToRole: false

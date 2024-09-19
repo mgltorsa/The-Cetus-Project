@@ -42,51 +42,113 @@ wchar_t uses Unicode 10.0.0.  Version 10.0 of the Unicode Standard is
    - 3 additional Zanabazar Square characters
 */
 /*
-
-
-
-
-  Array Privatization Example
-
-
-
-  The variable t is an array used temporarily during a single iteration of the
-
-  outer loop. No value of t is used in an iteration other than the one that
-
-  produced it. Without privatization, executing different iterations in
-
-  parallel would create conflicts on accesses to t.  Declaring t private gives
-
-  each thread a separate storage space, avoiding these conflicts.
-
-
+Examples
 
 
 */
-#include <math.h>
 int main()
 {
-	float a[1000][1000], b[1000][1000], t[1000];
-	int i, j;
+	int a[10], b[10], c[10], d[100000000][100000000];
+	int k;
+	int i;
+	int j;
 	int _ret_val_0;
+	#pragma cetus private(k) 
 	#pragma loop name main#0 
-	#pragma cetus private(i, j, t) 
 	#pragma cetus parallel 
-	#pragma omp parallel for private(i, j, t)
-	for (i=1; i<1000; i ++ )
+	/*
+	Disabled due to low profitability: #pragma omp parallel for private(k)
+	*/
+	for (k=0; k<10; k ++ )
 	{
-		#pragma loop name main#0#0 
+		a[k]=k;
+		b[k]=(k-10);
+		c[k]=1;
+	}
+	/* Flow dependence */
+	#pragma cetus private(i) 
+	#pragma loop name main#1 
+	for (i=1; i<10000; i ++ )
+	{
+		a[i]=b[i];
+		c[i]=a[i-1];
+	}
+	#pragma cetus private(i) 
+	#pragma loop name main#2 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i)
+	for (i=1; i<10000; i ++ )
+	{
+		a[i]=b[i];
+		c[i]=(a[i]+b[i-1]);
+	}
+	/* Antidependence */
+	#pragma cetus private(i) 
+	#pragma loop name main#3 
+	for (i=1; i<10000; i ++ )
+	{
+		a[i-1]=b[i];
+		c[i]=a[i];
+	}
+	/* Output dependence */
+	#pragma cetus private(i) 
+	#pragma loop name main#4 
+	for (i=1; i<10000; i ++ )
+	{
+		a[i]=b[i];
+		a[i+1]=c[i];
+	}
+	#pragma cetus private(i, j) 
+	#pragma loop name main#5 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i, j)
+	for (i=0; i<10000; i ++ )
+	{
 		#pragma cetus private(j) 
-		for (j=1; j<1000; j ++ )
+		#pragma loop name main#5#0 
+		for (j=0; j<10000; j ++ )
 		{
-			t[j]=(a[i][j]+b[i][j]);
+			d[i][j]=(i+j);
 		}
-		#pragma loop name main#0#1 
+	}
+	/* loop interchange */
+	#pragma cetus private(i, j) 
+	#pragma loop name main#6 
+	for (i=0; i<10000; i ++ )
+	{
 		#pragma cetus private(j) 
-		for (j=1; j<1000; j ++ )
+		#pragma loop name main#6#0 
+		#pragma cetus parallel 
+		#pragma omp parallel for private(j)
+		for (j=0; j<10000; j ++ )
 		{
-			b[i][j]=(t[j]+sqrt(t[j]));
+			d[i+1][j+2]=(d[i][j]+1);
+		}
+	}
+	#pragma cetus private(i, j) 
+	#pragma loop name main#7 
+	#pragma cetus parallel 
+	#pragma omp parallel for private(i, j)
+	for (i=0; i<10000; i ++ )
+	{
+		#pragma cetus private(j) 
+		#pragma loop name main#7#0 
+		for (j=0; j<10000; j ++ )
+		{
+			d[i][j+2]=(d[i][j]+1);
+		}
+	}
+	#pragma cetus private(i, j) 
+	#pragma loop name main#8 
+	for (i=0; i<10000; i ++ )
+	{
+		#pragma cetus private(j) 
+		#pragma loop name main#8#0 
+		#pragma cetus parallel 
+		#pragma omp parallel for private(j)
+		for (j=0; j<10000; j ++ )
+		{
+			d[i+1][j-2]=(d[i][j]+1);
 		}
 	}
 	_ret_val_0=0;
