@@ -384,7 +384,9 @@ public class LLMOptimizationPass extends TransformPass {
                         }
                         BufferedWriter bw = new BufferedWriter(new FileWriter(file));
                         String code = extractCodeSnippet(llmResponse.getContent());
-
+                        //TODO:
+                        //Print several programs with independent code snippets
+                        
                         bw.write(code);
                         bw.close();
 
@@ -438,6 +440,7 @@ public class LLMOptimizationPass extends TransformPass {
     // return codeSnippets;
     // }
 
+
     protected String extractCodeSnippet(String content) {
         String optimizedCode = "";
         // if pattern ```code``` is found, then get the content inside the code block or
@@ -483,6 +486,7 @@ public class LLMOptimizationPass extends TransformPass {
 
         try {
             LLMResponse response = transformer.transform(prompt, programSection, modelParameters);
+            
             this.optimizedCodes.put(transformer.getModel() + "-" + optimizationId, response.getContent());
             saveCode(optimizationId, folder, response);
 
