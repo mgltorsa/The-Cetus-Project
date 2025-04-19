@@ -793,18 +793,26 @@ public class SimpleExpression implements
         if (!allow(FOLD)) {
             return this;
         }
-        TreeMap<SimpleExpression, SimpleExpression> terms =
-                new TreeMap<SimpleExpression, SimpleExpression>();
+        TreeMap<String, SimpleExpression> termsMap =
+                new TreeMap<String, SimpleExpression>();
+
+        TreeMap<String, SimpleExpression> coeffs =
+                new TreeMap<String, SimpleExpression>();
+
         for (int i = 0; i < children.size(); i++) {
             SimpleExpression child = children.get(i);
             SimpleExpression term = child.getTerm(), coef = child.getCoef();
 
-            if (terms.containsKey(term)) {
+            if(!termsMap.containsKey(term.toString())){
+                termsMap.put(term.toString(), term);
+            } 
 
-                terms.put(term, add(terms.get(term), coef));
+            if (coeffs.containsKey(term.toString())) {
+
+                coeffs.put(term.toString(), add(coeffs.get(term.toString()), coef));
                 
             } else {
-                terms.put(term, coef);
+                coeffs.put(term.toString(), coef);
             }
            
         }
@@ -812,10 +820,13 @@ public class SimpleExpression implements
 
         SimpleExpression ret = new SimpleExpression(ADD);
 
-        for (SimpleExpression term : terms.keySet()) {
-            SimpleExpression coef = terms.get(term);
-
+        for (String termStr : coeffs.keySet()) {
+            SimpleExpression coef = coeffs.get(termStr);
+            if(coef ==null){
+                continue;
+            }
             if (!coef.equals(szero)) {
+                SimpleExpression term = termsMap.get(termStr);
                 ret.add((coef.equals(sone)) ? term : multiply(coef, term));
             }
         }
