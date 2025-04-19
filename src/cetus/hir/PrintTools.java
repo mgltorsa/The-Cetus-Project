@@ -51,6 +51,15 @@ public final class PrintTools {
     }
 
     /**
+     * Print for debug (min_verbosity = 3).
+     * @param items
+     */
+
+    public static void printlnDebug(String message) {
+        print(message+"\n", 3);
+    }
+
+    /**
     * Prints the specified items to {@link System#err} with separating
     * white spaces if verbosity is greater than {@code min_verbosity}.
     * This method minimizes overheads from string composition since it is done

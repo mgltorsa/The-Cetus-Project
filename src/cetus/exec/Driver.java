@@ -338,7 +338,11 @@ public class Driver {
         options.add(options.TRANSFORM,
                     "loop_interchange", 
                      "Exchanges the order of two iteration variables used by a nested loop");
-    }
+
+        options.add(options.TRANSFORM,
+            "paw_tiling",
+            "Activate this option to enable parallel aware tiling");
+        }
 
     /**
     * Returns the value of the given key or null * if the value is not set.
@@ -809,6 +813,10 @@ public class Driver {
             TransformPass.run(new LoopInterchange(program));
         }
 
+        if (getOptionValue("paw_tiling") != null) {
+            TransformPass.run(new ParallelAwareTiling(program));
+        }
+
         if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
             AnalysisPass.run(new LoopParallelizationPass(program));
         }
@@ -816,7 +824,6 @@ public class Driver {
             CodeGenPass.run(new ompGen(program));
         }
       
-
 /*
         if (getOptionValue("loop-tiling") != null) {
             AnalysisPass.run(new LoopTiling(program));

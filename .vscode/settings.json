@@ -4,5 +4,16 @@
         "type_traits": "cpp",
         "stdio.h": "c",
         "random": "c"
-    }
+    },
+    "java.debug.settings.onBuildFailureProceed": true,
+    "java.project.sourcePaths": [
+        "src"
+    ],
+    "java.project.referencedLibraries": [
+        "/mnt/d/workspace/java/cetus/The-Cetus-Project/lib/rsyntaxtextarea.jar",
+        "/mnt/d/workspace/java/cetus/The-Cetus-Project/lib/checkstyle.jar",
+        "/mnt/d/workspace/java/cetus/The-Cetus-Project/lib/junit.jar",
+        "/mnt/d/workspace/java/cetus/The-Cetus-Project/lib/antlr.jar",
+        "/mnt/d/workspace/java/cetus/The-Cetus-Project/lib/hamcrest-core-1.3.jar"
+    ]
 }
