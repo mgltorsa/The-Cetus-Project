@@ -57,29 +57,35 @@ public abstract class Statement implements Cloneable, Traversable, Annotatable {
         annotations = null;
     }
 
-    /** Returns a clone of the statement */
-    @Override
-    public Statement clone() {
+     /** Returns a clone of the statement */
+     @Override
+     public Statement clone() {
+         return clone(true);
+     }
+
+
+     public Statement clone(boolean mustHaveAnnotations) {
         Statement o = null;
         try {
-            o = (Statement)super.clone();
-        } catch(CloneNotSupportedException e) {
+            o = (Statement) super.clone();
+        } catch (CloneNotSupportedException e) {
             throw new InternalError();
         }
         o.object_print_method = object_print_method;
         o.parent = null;
         if (children != null) {
-            o.children = new ArrayList<Traversable>(children.size());
+            List<Traversable> newChildren = new ArrayList<Traversable>(children.size());
             int children_size = children.size();
+            // o.children = (List<Traversable>) ((ArrayList<Traversable>) children).clone();
             for (int i = 0; i < children_size; i++) {
                 Traversable child = children.get(i);
                 Traversable o_child = null;
                 if (child instanceof Statement) {
-                    o_child = ((Statement)child).clone();
+                    o_child = ((Statement) child).clone(mustHaveAnnotations);
                 } else if (child instanceof Expression) {
-                    o_child = ((Expression)child).clone();
+                    o_child = ((Expression) child).clone();
                 } else if (child instanceof Declaration) {
-                    o_child = ((Declaration)child).clone();
+                    o_child = ((Declaration) child).clone();
                 } else if (child != null) {
                     throw new InternalError(
                             "Statement contains an unknown child type" + this);
@@ -87,16 +93,21 @@ public abstract class Statement implements Cloneable, Traversable, Annotatable {
                 if (o_child != null) {
                     o_child.setParent(o);
                 }
-                o.children.add(o_child);
+                newChildren.add(o_child);
             }
+
+            o.children = newChildren;
         } else {
             o.children = null;
         }
         // Clone annotations after removing shallow copies.
-        o.annotations = null;
-        if (annotations != null) {
-            for (int i = 0; i < annotations.size(); i++) {
-                o.annotate(annotations.get(i).clone());
+        o.annotations = new ArrayList<>();
+
+        if (mustHaveAnnotations) {
+            if (annotations != null) {
+                for (int i = 0; i < annotations.size(); i++) {
+                    o.annotate(annotations.get(i).clone());
+                }
             }
         }
         return o;
