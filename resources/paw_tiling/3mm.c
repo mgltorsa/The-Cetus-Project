@@ -24,6 +24,7 @@ void init_array(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], doub
 }
 
 void matrix_multiply(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], double C[ni][nj]) {
+    #pragma experimental section start
     for (int i = 0; i < ni; i++) {
         for (int j = 0; j < nj; j++) {
             for (int k = 0; k < nk; k++) {
@@ -31,6 +32,8 @@ void matrix_multiply(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj],
             }
         }
     }
+
+    #pragma experimental section stop
 }
 
 void print_array(int ni, int nj, double C[ni][nj]) {

@@ -11,11 +11,11 @@ import java.util.Set;
  */
 public class DependenceVector {
     static final String[] depstr = {"*", "<", "=", ">"};
-    static final int nil = -1;
-    static final int any = 0;
-    static final int less = 1;
-    static final int equal = 2;
-    static final int greater = 3;
+    public static final int nil = -1;
+    public static final int any = 0;
+    public static final int less = 1;
+    public static final int equal = 2;
+    public static final int greater = 3;
     static final int cartesian_prod[][] = {
             {any, less, equal, greater},
             {less, less, nil, nil},
@@ -24,6 +24,13 @@ public class DependenceVector {
     /* LinkedHashMap maintains ordering of loops within the vector map */
     LinkedHashMap<Loop, Integer> directionVector;
     private boolean valid = true;
+
+    public DependenceVector() {
+        super();
+        this.valid = false;
+        directionVector = new LinkedHashMap<Loop, Integer>();
+          
+    }
 
     public DependenceVector(LinkedList <Loop> nest) {
         this.valid = true;

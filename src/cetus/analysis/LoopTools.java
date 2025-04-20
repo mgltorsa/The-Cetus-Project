@@ -832,6 +832,14 @@ public class LoopTools {
         return (note == null) ? null : (String)note.get("name");
     }
 
+    public static void addLoopName(Program program, boolean overwrite) {
+        if (overwrite) {
+            is_loop_named = false;
+        }
+        addLoopName(program);
+
+    }
+
     /**
      * Adds a unique loop name to each for loop.
      * @param program the input program.
