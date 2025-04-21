@@ -71,6 +71,11 @@ public class NTSelectionAlgo implements TileSizeSelectionAlgo {
 
             // Return a map with the outermost loop index variable and the computed tile
             // size
+            if (alignedTileSize instanceof IntegerLiteral) {
+                long tileValue = ((IntegerLiteral) alignedTileSize).getValue();
+                if (tileValue <= 1)
+                    continue;
+            }
             tileSizes.put(outerIndexVar, alignedTileSize);
         }
 

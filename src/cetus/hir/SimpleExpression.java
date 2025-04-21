@@ -344,7 +344,7 @@ public class SimpleExpression implements
     }
 
     // Returns a simple expression from the given integer number
-    protected static SimpleExpression getInt(int num) {
+    protected static SimpleExpression getInt(long num) {
         return new SimpleExpression(new IntegerLiteral(num));
     }
 

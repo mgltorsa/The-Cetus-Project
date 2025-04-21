@@ -22,7 +22,7 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
 
     private long cacheSizeInBits;
     private int cacheLineSizeInBits;
-    
+
     public LRWSelectionAlgo(long cacheSizeInKiB, int cacheLineSizeInBytes) {
         super();
         this.cacheSizeInBits = cacheSizeInKiB * 1024 * 8; // convert to bits
@@ -68,8 +68,11 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
                 if (possibleTileSizes.containsKey(indexVar)) {
                     oldBlock = largestBlockSize;
                 }
-
-                possibleTileSizes.put(indexVar, new IntegerLiteral(Math.min(oldBlock, largestBlockSize)));
+                long largestBlock = Math.min(oldBlock, largestBlockSize);
+                if (largestBlock <= 1) {
+                    continue;
+                }
+                possibleTileSizes.put(indexVar, new IntegerLiteral(largestBlock));
             }
         }
 
@@ -134,7 +137,7 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
      * 
      * @param allMatricesSize the size (in bytes) of one full matrix (for current
      *                        implementation we assume matrices are contiguous)
-     * @param cacheSizeInBits       the size (in bytes) of the target cache (e.g. L3
+     * @param cacheSizeInBits the size (in bytes) of the target cache (e.g. L3
      *                        cache)
      *
      * @return the block dimension (number of elements on each side)
@@ -146,7 +149,8 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
 
         // Compute maximum block dimension allowed by the cache:
         // 3 * b * b * elementSize <= cacheSize ==> b <= sqrt(cacheSize/(3*elementSize))
-        long maxBlockForCache = (long) Math.floor(Math.sqrt((double) cacheSizeInBits / (numberOfAccesses * elementSizeInBits)));
+        long maxBlockForCache = (long) Math
+                .floor(Math.sqrt((double) cacheSizeInBits / (numberOfAccesses * elementSizeInBits)));
 
         // Determine the number of elements in the matrix via the ArrayAccess.
         // We use the loop's symbol table to try to retrieve a declared size.

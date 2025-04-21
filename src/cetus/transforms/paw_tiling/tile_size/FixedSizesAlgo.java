@@ -53,8 +53,11 @@ public class FixedSizesAlgo implements TileSizeSelectionAlgo {
             Expression indexVar = LoopTools.getIndexVariable(loop);
             if (indexVar == null)
                 continue;
-            
-            tileSizes.put(indexVar, new IntegerLiteral(tileSizeIter.next()));
+            long tileValue = tileSizeIter.next();
+            if (tileValue <= 1) {
+                continue;
+            }
+            tileSizes.put(indexVar, new IntegerLiteral(tileValue));
         }
         return tileSizes;
     }

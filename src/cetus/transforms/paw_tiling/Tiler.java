@@ -70,14 +70,14 @@ public class Tiler {
                 if (isCrossStripLoop(ancestorLoop))
                     break;
 
-                Statement body = getUpdatedBodyFromParent(parentLoop.clone(), inStripLoop);
+                Statement body = getUpdatedBodyFromParent(parentLoop.clone(false), inStripLoop);
                 crossStripLoop.setBody(body);
                 parentLoop = ancestorLoop;
 
             }
 
             swapIn(crossStripLoop, parentLoop);
-            parentLoop.setBody(crossStripLoop.clone());
+            parentLoop.setBody(crossStripLoop.clone(false));
 
             crossStripLoop = parentLoop;
 

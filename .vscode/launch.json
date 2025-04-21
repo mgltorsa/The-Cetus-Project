@@ -6,6 +6,14 @@
     "configurations": [
         {
             "type": "java",
+            "name": "PAW_TILING no_tiled default",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/no_tiled.c",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
             "name": "PAW_TILING 3mm TILESIZES=32",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",

@@ -20,6 +20,7 @@ import cetus.hir.IntegerLiteral;
 import cetus.hir.Specifier;
 import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
+import cetus.hir.Symbolic;
 import cetus.hir.Traversable;
 import cetus.hir.UnaryExpression;
 import cetus.hir.VariableDeclarator;
@@ -170,9 +171,10 @@ public class ArrayUtils {
     }
 
     public static final Expression getFullSize(SymbolTable symbols, List<ArrayAccess> arrayAccesses) {
-        long dataSize = 1;
+        Expression dataSize = new IntegerLiteral(1L);
+
         for (ArrayAccess arrayAccess : arrayAccesses) {
-            long arraySize = 1;
+            Expression arraySize = new IntegerLiteral(1L);
             Expression arrayName = arrayAccess.getArrayName();
             IDExpression arrayID;
 
@@ -185,7 +187,7 @@ public class ArrayUtils {
                         .collect(Collectors.toList());
 
                 if (ids.isEmpty()) {
-                    return new IntegerLiteral(dataSize);
+                    return dataSize;
                 }
                 arrayID = (IDExpression) ids.get(0);
             }
@@ -216,31 +218,47 @@ public class ArrayUtils {
                         }
 
                         if (dimension instanceof BinaryExpression) {
-                            boolean isComputable = dimension.getChildren().stream()
-                                    .allMatch(nullChild -> nullChild instanceof IntegerLiteral);
-                            if (!isComputable) {
-                                continue;
-                            }
-                            for (Traversable childExpr : dimension.getChildren()) {
-                                if (childExpr instanceof IntegerLiteral) {
-                                    long dimensionSize = ((IntegerLiteral) childExpr).getValue();
-                                    if (dimensionSize <= 0)
-                                        continue;
-                                    arraySize *= dimensionSize;
+                            Expression possibleValue = ((BinaryExpression) dimension).getRHS();
+                            arraySize = Symbolic.multiply(arraySize, possibleValue);
+                        } else if (dimension instanceof IntegerLiteral) {
+                            arraySize = Symbolic.multiply(arraySize, dimension);
+                        } else if (dimension instanceof Identifier) {
+                            Expression declaredValue = VariableDeclarationUtils.getVariableDeclaredValue(symbols,
+                                    (Identifier) dimension);
+                             if (declaredValue instanceof IntegerLiteral) {
+                                long dimensionSize = ((IntegerLiteral) declaredValue).getValue();
+                                if (dimensionSize <= 0)
+                                    continue;
+
+                                arraySize = Symbolic.multiply(arraySize, new IntegerLiteral(dimensionSize));
+
+                            } else if (declaredValue instanceof BinaryExpression) {
+                                boolean isComputable = declaredValue.getChildren().stream()
+                                        .allMatch(nullChild -> nullChild instanceof IntegerLiteral);
+                                if (!isComputable) {
+                                    continue;
+                                }
+                                for (Traversable childExpr : declaredValue.getChildren()) {
+                                    if (childExpr instanceof IntegerLiteral) {
+                                        long dimensionSize = ((IntegerLiteral) childExpr).getValue();
+                                        if (dimensionSize <= 0)
+                                            continue;
+
+                                        arraySize = Symbolic.multiply(arraySize, new IntegerLiteral(dimensionSize));
+
+                                    }
                                 }
                             }
-                        } else if (dimension instanceof IntegerLiteral) {
-                            arraySize *= ((IntegerLiteral) dimension).getValue();
                         }
 
                     }
                 }
             }
 
-            dataSize = dataSize + arraySize;
+            dataSize = Symbolic.add(dataSize, arraySize);
         }
 
-        return new IntegerLiteral(dataSize);
+        return dataSize;
     }
 
     /**
