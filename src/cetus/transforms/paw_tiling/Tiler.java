@@ -11,10 +11,13 @@ import cetus.hir.AssignmentExpression;
 import cetus.hir.AssignmentOperator;
 import cetus.hir.BinaryExpression;
 import cetus.hir.BinaryOperator;
+import cetus.hir.CetusAnnotation;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
+import cetus.hir.IRTools;
+import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
 import cetus.hir.MinMaxExpression;
 import cetus.hir.Statement;
@@ -26,7 +29,8 @@ import cetus.utils.VariableDeclarationUtils;
 
 public class Tiler {
 
-    private static final String TILE_PREFIX = "T";
+    public static final String CROSS_TILE_SUFFIX = "_cetus_cross";
+    public static final String IN_TILE_PREFIX = "cetus_tile_";
 
     public static TiledLoop tile(SymbolTable variableDeclarationSpace, ForLoop outermostLoop, Expression tileSize,
             int targetLoopPos, List<DependenceVector> dependenceVectors)
@@ -58,8 +62,22 @@ public class Tiler {
         if (targetLoopPos - 1 >= 0) {
             ForLoop parentLoop = loops.get(targetLoopPos - 1);
 
-            parentLoop.setBody(crossStripLoop);
-            permuteLoop(crossStripLoop, parentLoop);
+            while (parentLoop != null) {
+                ForLoop ancestorLoop = IRTools.getAncestorOfType(parentLoop, ForLoop.class);
+                if (ancestorLoop == null)
+                    break;
+
+                if (isCrossStripLoop(ancestorLoop))
+                    break;
+
+                Statement body = getUpdatedBodyFromParent(parentLoop.clone(), inStripLoop);
+                crossStripLoop.setBody(body);
+                parentLoop = ancestorLoop;
+
+            }
+
+            swapIn(crossStripLoop, parentLoop);
+            parentLoop.setBody(crossStripLoop.clone());
 
             crossStripLoop = parentLoop;
 
@@ -71,8 +89,40 @@ public class Tiler {
                 (Loop) crossStripLoop);
 
         TiledLoop newTiledLoop = new TiledLoop(tiledLoop, newDVS);
-
+        Expression indexVar = LoopTools.getIndexVariable(newTiledLoop);
+        newTiledLoop.setTileSize(indexVar, tileSize);
         return newTiledLoop;
+    }
+
+    private static Statement getUpdatedBodyFromParent(ForLoop parentLoop, ForLoop inStripLoop) {
+        Statement body = parentLoop.getBody().clone(false);
+        List<Traversable> children = body.getChildren();
+        int childToReplaceIdx = -1;
+        for (int i = 0; i < children.size(); i++) {
+            Traversable child = children.get(i);
+            if (child instanceof ForLoop) {
+                ForLoop childLoop = (ForLoop) child;
+                Expression originalIndexVar = LoopTools.getIndexVariable(childLoop);
+                Expression newIndexVar = LoopTools.getIndexVariable(inStripLoop);
+                if (!originalIndexVar.toString().toLowerCase().contains(newIndexVar.toString().toLowerCase())) {
+                    continue;
+                }
+                childToReplaceIdx = i;
+                break;
+            }
+        }
+        body.setChild(childToReplaceIdx, inStripLoop.clone());
+        parentLoop.setBody(body);
+        return parentLoop;
+    }
+
+    public static boolean isCrossStripLoop(ForLoop loop) {
+        if (loop == null) {
+            return false;
+        }
+        Expression indexVar = LoopTools.getIndexVariable(loop);
+        return indexVar.toString().endsWith(Tiler.CROSS_TILE_SUFFIX);
+
     }
 
     public static List<DependenceVector> calculateAfterTilingDVs(List<DependenceVector> originalDVs,
@@ -228,26 +278,34 @@ public class Tiler {
 
         if (crossIndex == null) {
             crossIndex = VariableDeclarationUtils.declareVariable(symbolTable,
-                    loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
+                    loopSymbol.getSymbolName() + CROSS_TILE_SUFFIX);
 
         }
 
-        IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(symbolTable,
-                TILE_PREFIX + loopSymbol.getSymbolName());
+        Expression strip = tileSize.clone();
 
-        if (stripIdentifier == null) {
-            stripIdentifier = VariableDeclarationUtils.declareVariable(symbolTable,
-                    TILE_PREFIX + loopSymbol.getSymbolName(), tileSize.clone());
+        if (!(strip instanceof IntegerLiteral)) {
+            IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(symbolTable,
+                    IN_TILE_PREFIX + loopSymbol.getSymbolName());
 
+            if (stripIdentifier == null) {
+                stripIdentifier = VariableDeclarationUtils.declareVariable(symbolTable,
+                        IN_TILE_PREFIX + loopSymbol.getSymbolName(), tileSize.clone());
+
+            }
+
+            strip = stripIdentifier;
         }
-        ForLoop inStripLoop = createInStripLoop(loop, crossIndex, stripIdentifier);
-        ForLoop crossStripLoop = createCrossStripLoop(loop, stripIdentifier, crossIndex, inStripLoop);
+
+        ForLoop inStripLoop = createInStripLoop(loop, crossIndex, strip);
+
+        ForLoop crossStripLoop = createCrossStripLoop(loop, strip, crossIndex, inStripLoop);
 
         return new ForLoop[] { crossStripLoop, inStripLoop };
 
     }
 
-    public static void permuteLoop(ForLoop loop, ForLoop targetLoop) {
+    public static void swapIn(ForLoop loop, ForLoop targetLoop) {
 
         Statement originalInitStm = targetLoop.getInitialStatement().clone();
         Expression originalCond = targetLoop.getCondition().clone();
@@ -262,7 +320,7 @@ public class Tiler {
         loop.setStep(originalStep);
     }
 
-    public static ForLoop createInStripLoop(ForLoop loop, Expression stripExpr, IDExpression newIndexVariable)
+    public static ForLoop createInStripLoop(ForLoop loop, Expression stripExpr, Expression newIndexVariable)
             throws Exception {
         Statement originalInitStatement = loop.getInitialStatement();
         List<Traversable> originalInitStatements = originalInitStatement.getChildren();
@@ -290,7 +348,7 @@ public class Tiler {
         AssignmentOperator assignmentOperator = oriAssignmentExp.getOperator();
 
         Expression newLoopInitExp = new AssignmentExpression(initLHSExp.clone(), assignmentOperator,
-                newIndexVariable.clone());
+                stripExpr.clone());
         newLoopInitExp.setParens(false);
         BinaryExpression originalLoopCondition = (BinaryExpression) originalCondition;
         Expression condRHS = originalLoopCondition.getRHS();
@@ -382,6 +440,8 @@ public class Tiler {
 
         ForLoop crossStripLoop = new ForLoop(newLoopInitStm, newLoopCondition, newLoopStepExp, inStripLoop);
 
+        CetusAnnotation tilingAnnotation = new CetusAnnotation("paw_tiling", "true");
+        crossStripLoop.annotateBefore(tilingAnnotation);
         return crossStripLoop;
     }
 

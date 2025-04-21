@@ -249,6 +249,7 @@ public class ForLoop extends Statement implements Loop, SymbolTable {
     }
 
     public ForLoop clone(boolean mustHaveAnnotations) {
+        
         ForLoop fl = (ForLoop) super.clone(mustHaveAnnotations);
         // Builds the internal look-up table.
         // There is no need for building an internal look-up table for the loop

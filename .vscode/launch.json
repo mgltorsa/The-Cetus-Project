@@ -6,10 +6,34 @@
     "configurations": [
         {
             "type": "java",
-            "name": "PAW_TILING 3mm",
+            "name": "PAW_TILING 3mm TILESIZES=32",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "-paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -tileSizes=32 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "PAW_TILING 3mm NT-ALGO",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -selection=NT -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "PAW_TILING 3mm LRW-ALGO",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -selection=LRW -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "PAW_TILING 3mm_sym NT-ALGO",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -selection=NT -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm_sym.c",
             "console": "integratedTerminal"
         }
     ]

@@ -56,7 +56,7 @@ public final class PrintTools {
      */
 
     public static void printlnDebug(String message) {
-        print(message+"\n", 3);
+        print(message+"\n", 2);
     }
 
     /**

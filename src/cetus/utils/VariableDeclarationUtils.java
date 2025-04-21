@@ -163,4 +163,20 @@ public class VariableDeclarationUtils {
 
         return null;
     }
+
+    public static void replaceVariableDeclaration(SymbolTable symbolTable, IDExpression variableNameID,
+            Expression value) {
+
+        Initializer initializer = new Initializer(value);
+
+        VariableDeclaration varDeclaration = (VariableDeclaration) symbolTable.findSymbol(variableNameID);
+        if (varDeclaration.getNumDeclarators() >= 1) {
+            varDeclaration.getDeclarator(0).setInitializer(initializer);
+        } else {
+            VariableDeclarator declarator = new VariableDeclarator(variableNameID);
+            declarator.setInitializer(initializer);
+            varDeclaration.addDeclarator(declarator);
+        }
+
+    }
 }

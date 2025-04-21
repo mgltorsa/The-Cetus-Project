@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NI 256
-#define NJ 256
-#define NK 256
+#define NI 10000
+#define NJ 10000
+#define NK 10000
 
 void init_array(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], double C[ni][nj]) {
     for (int i = 0; i < ni; i++) {
@@ -23,11 +23,11 @@ void init_array(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], doub
     }
 }
 
-void matrix_multiply(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], double C[ni][nj]) {
+void matrix_multiply(double A[NI][NK], double B[NK][NK], double C[NI][NJ]) {
     #pragma experimental section start
-    for (int i = 0; i < ni; i++) {
-        for (int j = 0; j < nj; j++) {
-            for (int k = 0; k < nk; k++) {
+    for (int i = 0; i < NI; i++) {
+        for (int j = 0; j < NJ; j++) {
+            for (int k = 0; k < NK; k++) {
                 C[i][j] += A[i][k] * B[k][j];
             }
         }
@@ -52,7 +52,7 @@ int main() {
 
     init_array(NI, NJ, NK, A, B, C);
 
-    matrix_multiply(NI, NJ, NK, A, B, C);
+    matrix_multiply(A, B, C);
 
     print_array(NI, NJ, C);
 

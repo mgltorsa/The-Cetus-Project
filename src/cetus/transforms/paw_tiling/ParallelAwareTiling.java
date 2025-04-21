@@ -18,26 +18,33 @@ import cetus.exec.Driver;
 import cetus.hir.Annotation;
 import cetus.hir.AnnotationDeclaration;
 import cetus.hir.ArrayAccess;
+import cetus.hir.AssignmentExpression;
+import cetus.hir.AssignmentOperator;
 import cetus.hir.BinaryExpression;
 import cetus.hir.BinaryOperator;
+import cetus.hir.CetusAnnotation;
 import cetus.hir.CodeAnnotation;
 import cetus.hir.CompoundStatement;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.FloatLiteral;
 import cetus.hir.ForLoop;
+import cetus.hir.IDExpression;
 import cetus.hir.IfStatement;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Literal;
 import cetus.hir.Loop;
 import cetus.hir.PrintTools;
 import cetus.hir.Program;
+import cetus.hir.Specifier;
 import cetus.hir.Statement;
 import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
+import cetus.hir.Symbolic;
 import cetus.hir.TranslationUnit;
 import cetus.hir.Traversable;
 import cetus.transforms.TransformPass;
+import cetus.transforms.paw_tiling.TilingParams.SelectionAlgorithm;
 import cetus.utils.ArrayUtils;
 import cetus.utils.ExperimentalSectionUtils;
 import cetus.utils.MemoryUtils;
@@ -47,14 +54,6 @@ public class ParallelAwareTiling extends TransformPass {
 
     public final static String PASS_NAME = "paw_tiling";
 
-    public final static String CORES_PARAM_NAME = "cores";
-    public final static String CACHE_PARAM_NAME = "cacheSize";
-
-    public final static int MAX_ITERATIONS_TO_PARALLELIZE = 100000;
-    public final static int DEFAULT_PROCESSORS = 4;
-    public final static int DEFAULT_CACHE_SIZE = 32 * 1024; // 32 KiBi = 32 * 1024 bits
-    public final static int DEFAULT_CACHE_ALIGNMENT = 16; // common cache alignment
-
     private static final CodeAnnotation requiredCodeAnnotation = new CodeAnnotation(
             "#define MIN(a,b) ((a)<(b)?(a):(b))\n" +
                     "#define MAX(a,b) ((a)>(b)?(a):(b))\n" +
@@ -63,27 +62,11 @@ public class ParallelAwareTiling extends TransformPass {
                     "#define FLOOR(x) ((int)((x)-0.5))\n" +
                     "#define ROUND(x) ((int)((x)+0.5))\n");
 
-    private int numOfProcessors = DEFAULT_PROCESSORS;
-    private int cacheSizeInKB = DEFAULT_CACHE_SIZE;
+    private TilingParams tilingParams;
 
     public ParallelAwareTiling(Program program) {
         super(program);
-        try {
-            numOfProcessors = Integer.parseInt(Driver.getOptionValue(CORES_PARAM_NAME));
-            assert numOfProcessors > 0;
-        } catch (Exception e) {
-            PrintTools.print(
-                    "Error on setting num of processors. The default value: " + DEFAULT_PROCESSORS + " will be used",
-                    2);
-        }
-
-        try {
-            cacheSizeInKB = Integer.parseInt(Driver.getOptionValue(CACHE_PARAM_NAME));
-            assert cacheSizeInKB > 0;
-        } catch (Exception e) {
-            PrintTools.print(
-                    "Error on setting cache size. The default value: " + DEFAULT_CACHE_SIZE + " will be used", 2);
-        }
+        tilingParams = TilingParams.getTilingParams();
     }
 
     private boolean isValidForTiling(ForLoop loop) {
@@ -106,7 +89,7 @@ public class ParallelAwareTiling extends TransformPass {
 
         if (sections.isEmpty()) {
             PrintTools.printlnDebug("No experimental sections found.");
-            
+
             DFIterator<ForLoop> loopIterator = new DFIterator<>(program, ForLoop.class);
             while (loopIterator.hasNext()) {
                 ForLoop loop = loopIterator.next();
@@ -116,7 +99,7 @@ public class ParallelAwareTiling extends TransformPass {
 
                 validLoops.add(loop);
             }
-        }else{
+        } else {
             PrintTools.printlnDebug("Experimental sections found: " + sections.size());
             for (List<Traversable> section : sections) {
                 for (Traversable t : section) {
@@ -159,9 +142,11 @@ public class ParallelAwareTiling extends TransformPass {
             return;
         }
 
+        List<TiledLoop> updatedLoops = new ArrayList<>();
         for (ForLoop targetLoop : validLoops) {
             try {
-                processLoop(targetLoop);
+                TiledLoop newLoop = processLoop(targetLoop);
+                updatedLoops.add(newLoop);
             } catch (Exception e) {
                 e.printStackTrace();
                 PrintTools.print(
@@ -170,46 +155,142 @@ public class ParallelAwareTiling extends TransformPass {
         }
 
         reRunPasses();
+        for (TiledLoop forLoop : updatedLoops) {
+            updateLoopInfo(forLoop);
+        }
+
     }
 
-    private void processLoop(ForLoop targetLoop) throws Exception {
+    private void updateLoopInfo(TiledLoop loop) {
+        PrintTools.printlnDebug("Balancing tile size for loop: " + loop);
+        SymbolTable symbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent());
+        Map<Expression, Expression> tileSizes = loop.getTileSizes();
+        DFIterator<ForLoop> loopIterator = new DFIterator<>(loop, ForLoop.class);
+        while (loopIterator.hasNext()) {
+            ForLoop innerLoop = loopIterator.next();
+            List<CetusAnnotation> cetusAnnots = innerLoop.getAnnotations(CetusAnnotation.class);
+
+            boolean isParallel = false;
+            for (CetusAnnotation cetusAnnot : cetusAnnots) {
+                isParallel = Boolean.parseBoolean(cetusAnnot.get("parallel"));
+                if (isParallel)
+                    break;
+
+            }
+
+            if (!isParallel)
+                continue;
+
+            if (!Tiler.isCrossStripLoop(innerLoop))
+                continue;
+
+            // handle cross strip loops
+            Expression balancedTile = getBalancedTile(symbolTable, innerLoop, tileSizes);
+
+            Expression indexVariable = LoopTools.getIndexVariable(innerLoop);
+            Expression stepLHS = indexVariable;
+            Expression stepRHS = balancedTile;
+            Expression newStepExpr = null;
+
+            if (balancedTile instanceof IntegerLiteral) {
+                newStepExpr = new AssignmentExpression(stepLHS.clone(), AssignmentOperator.ADD,
+                        stepRHS.clone());
+            } else {
+                Symbol loopSymbol = LoopTools.getLoopIndexSymbol(loop);
+
+                IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(symbolTable,
+                        loopSymbol.getSymbolName());
+
+                if (stripIdentifier == null) {
+                    stripIdentifier = VariableDeclarationUtils.declareVariable(symbolTable,
+                            loopSymbol.getSymbolName(),
+                            balancedTile);
+
+                } else {
+                    VariableDeclarationUtils.replaceVariableDeclaration(symbolTable, stripIdentifier, balancedTile);
+                }
+
+                newStepExpr = new AssignmentExpression(stepLHS.clone(), AssignmentOperator.ADD,
+                        stripIdentifier);
+            }
+            innerLoop.setStep(newStepExpr);
+
+        }
+    }
+
+    private Expression getBalancedTile(SymbolTable symbolTable, ForLoop loop, Map<Expression, Expression> tileSizes) {
+        Expression indexVar = LoopTools.getIndexVariable(loop);
+        Expression balancedTile = null;
+
+        for (Expression tileSize : tileSizes.keySet()) {
+
+            if (!indexVar.toString().toLowerCase().contains(tileSize.toString().toLowerCase()))
+                continue;
+
+            balancedTile = tileSizes.get(tileSize);
+            
+            // Expression coresExpression = new IntegerLiteral(tilingParams.getNumOfProcessors());
+            // if (tilingParams.getTypeSelectionAlgo() != SelectionAlgorithm.FIXED) {
+            //     balancedTile = Symbolic.divide(balancedTile, coresExpression);
+            // }
+
+            int integerSizeInBits = ArrayUtils.getTypeSizeInBits(Specifier.INT);
+            int cacheLineInBytes = tilingParams.getCacheLineInBytes();
+            int cacheLineInIntegers = cacheLineInBytes / (integerSizeInBits / 8);
+            IntegerLiteral cacheLineInIntegersLiteral = new IntegerLiteral(cacheLineInIntegers);
+
+            balancedTile = Symbolic.simplify(balancedTile);
+
+            // align cache size
+            Expression alignmentExpr = Symbolic.mod(balancedTile,
+                    cacheLineInIntegersLiteral);
+            balancedTile = Symbolic.add(balancedTile, alignmentExpr);
+
+            return balancedTile;
+
+        }
+
+        PrintTools.printlnDebug("No balanced tile found for loop: " + loop);
+        throw new RuntimeException("No balanced tile found for loop: " + loop);
+
+    }
+
+    private TiledLoop processLoop(ForLoop targetLoop) throws Exception {
         // Perform tiling transformation on the loop
         // This is a placeholder for the actual implementation
         PrintTools.printlnDebug("Tiling loop: " + targetLoop);
 
         // For every loop create a map of tile sizes
-        Map<Expression, Expression> tileSizes = new java.util.HashMap<>();
-
-        // Example tile sizes for the loop indices
-        DFIterator<ForLoop> loopIterator = new DFIterator<>(targetLoop, ForLoop.class);
-
-        int initialTileSize = 16; // Example initial tile size
-        while (loopIterator.hasNext()) {
-            ForLoop loop = loopIterator.next();
-            Expression indexVar = LoopTools.getIndexVariable(loop);
-            // Example tile size, this should be replaced with actual logic to determine
-            // tile sizes
-            Expression tileSize = new IntegerLiteral(initialTileSize); // Example tile size
-            tileSizes.put(indexVar, tileSize);
-            initialTileSize += 16; // Example logic to increase tile size for next loop
+        Map<Expression, Expression> tileSizes = tilingParams.getTileSizeSelectionAlgo().getTileSizes(targetLoop);
+        if (tileSizes == null || tileSizes.isEmpty()) {
+            throw new Exception("No tile sizes found for loop: " + targetLoop);
         }
 
-        ForLoop tiledLoop = tile(targetLoop, tileSizes); // Example tile size
+        TiledLoop tiledLoop = tile(targetLoop, tileSizes); // Example tile size
 
         Expression totalOfInstructions = calculateTotalOfInstructions(targetLoop);
-        Expression totalElementsInCache = calculateCacheInNumberOfElements(targetLoop, cacheSizeInKB);
+        Expression totalElementsInCache = calculateCacheInNumberOfElements(targetLoop, tilingParams.getCacheSizeInKB());
         Expression dataFullSize = calculateDataFullSize(targetLoop);
 
-        Statement optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
-                dataFullSize, targetLoop.clone(false), tiledLoop.clone(false));
+        TiledLoop clonedTiledLoop = tiledLoop.clone(false);
+        Statement optimizedStatement = clonedTiledLoop;
+
+        if (tilingParams.isEnableTilingProfitability()) {
+            optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
+                    dataFullSize, targetLoop.clone(false), clonedTiledLoop);
+
+            if (optimizedStatement instanceof IfStatement) {
+                clonedTiledLoop = (TiledLoop) ((IfStatement) optimizedStatement).getElseStatement();
+            }
+        }
 
         replaceLoop(targetLoop, optimizedStatement);
+
+        return clonedTiledLoop;
 
     }
 
     private Expression calculateDataFullSize(ForLoop loop) {
-        // Placeholder for the actual data size calculation
-        // This is where the data size calculation would be applied to the loop
         PrintTools.printlnDebug("Calculating data full size for loop: " + loop);
         List<ArrayAccess> arrayAccesses = new ArrayList<>();
         new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
@@ -218,7 +299,7 @@ public class ParallelAwareTiling extends TransformPass {
                 arrayAccesses);
     }
 
-    private Expression calculateCacheInNumberOfElements(ForLoop loop, int cacheSizeInKB) {
+    private Expression calculateCacheInNumberOfElements(ForLoop loop, long cacheSizeInKB) {
         // Placeholder for the actual cache size calculation
         // This is where the cache size calculation would be applied to the loop
         PrintTools.printlnDebug("Calculating cache size in number of elements for loop: " + loop);
@@ -283,6 +364,7 @@ public class ParallelAwareTiling extends TransformPass {
         cloneCodeAnnotations(originalLoop, newLoop);
 
         originalParent.setChild(originalLoopIdx, newLoop);
+
     }
 
     private void cloneCodeAnnotations(ForLoop originalLoop, Statement newLoop) {
@@ -298,7 +380,8 @@ public class ParallelAwareTiling extends TransformPass {
             Statement noTiledCode, Statement tiledCode) {
 
         Expression instructionsCondition = new BinaryExpression(maxOfInstructions.clone(), BinaryOperator.COMPARE_LE,
-                new IntegerLiteral(MAX_ITERATIONS_TO_PARALLELIZE));
+                new IntegerLiteral(tilingParams.getMaxIterationsToParallelize()));
+
         Expression cacheCond = new BinaryExpression(cache.clone(), BinaryOperator.COMPARE_GT, dataFullSize.clone());
         Expression condition = new BinaryExpression(instructionsCondition.clone(), BinaryOperator.LOGICAL_AND,
                 cacheCond.clone());
@@ -317,10 +400,10 @@ public class ParallelAwareTiling extends TransformPass {
             boolean isEnoughCache = false;
             if (maxOfInstructions instanceof IntegerLiteral) {
                 long inst = ((IntegerLiteral) maxOfInstructions).getValue();
-                isProfitableParallelIterations = inst >= MAX_ITERATIONS_TO_PARALLELIZE;
+                isProfitableParallelIterations = inst >= tilingParams.getMaxIterationsToParallelize();
             } else if (maxOfInstructions instanceof FloatLiteral) {
                 double inst = ((FloatLiteral) maxOfInstructions).getValue();
-                isProfitableParallelIterations = inst <= MAX_ITERATIONS_TO_PARALLELIZE;
+                isProfitableParallelIterations = inst <= tilingParams.getMaxIterationsToParallelize();
             }
 
             long cacheSize = ((IntegerLiteral) cache).getValue();
@@ -335,9 +418,9 @@ public class ParallelAwareTiling extends TransformPass {
 
             }
             if (isProfitableParallelIterations && isEnoughCache) {
-                return tiledCode.clone();
+                return tiledCode;
             } else {
-                return noTiledCode.clone();
+                return noTiledCode;
             }
         }
     }
@@ -365,15 +448,24 @@ public class ParallelAwareTiling extends TransformPass {
             if (!tileSizes.containsKey(indexVar))
                 continue;
 
+            Expression tileSize = tileSizes.get(indexVar);
+            if (tileSize == null) {
+                PrintTools.printlnDebug("Tile size is null for index: " + indexVar);
+                continue;
+            }
+            if (tileSize.toString().equals("1")) {
+                PrintTools.printlnDebug("Tile size is 1 for index: " + indexVar + "so, skipping tiling.");
+                continue;
+            }
+
             int targetLoopPos = getLoopPosByIndex(tiledLoop, indexVar);
 
             TiledLoop clonedTiledLoop = tiledLoop.clone(false);
-            Expression tileSize = tileSizes.get(indexVar);
             tiledLoop = Tiler.tile(symbolTable, clonedTiledLoop, tileSize, targetLoopPos, curDvs);
 
             curDvs = tiledLoop.getDependenceVectors();
         }
-
+        tiledLoop.setTileSizes(tileSizes);
         return tiledLoop;
     }
 

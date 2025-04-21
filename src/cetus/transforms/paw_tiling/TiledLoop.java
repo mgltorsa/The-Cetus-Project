@@ -1,7 +1,9 @@
 package cetus.transforms.paw_tiling;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import cetus.analysis.DependenceVector;
 import cetus.analysis.LoopTools;
@@ -16,20 +18,35 @@ public class TiledLoop extends ForLoop {
     private List<Loop> nestedLoops = new ArrayList<>();
     private List<DependenceVector> dependeceVectors = new ArrayList<>();
     private Loop outermostParallelizableLoop;
+    private Map<Expression, Expression> tileSizes;
 
-    public TiledLoop(ForLoop loopNest, List<DependenceVector> dvs) throws Exception {
+    public TiledLoop(ForLoop loopNest, List<DependenceVector> dvs)
+            throws Exception {
         this(loopNest.getInitialStatement().clone(false),
                 loopNest.getCondition().clone(),
                 loopNest.getStep().clone(),
                 loopNest.getBody().clone(false));
 
         new DFIterator<Loop>(loopNest, Loop.class).forEachRemaining(loop -> nestedLoops.add(lookupLoop(loop, this)));
-
+            
         setDependenceVectors(dvs);
         calculateOutermostParallelLoop();
+        this.tileSizes = new HashMap<>();
 
     }
 
+    public Map<Expression, Expression> getTileSizes() {
+        return tileSizes;
+    }
+
+    public void setTileSize(Expression indexVariable, Expression tileSize) {
+        this.tileSizes.put(indexVariable, tileSize);
+    }
+
+    public void setTileSizes(Map<Expression, Expression> tileSizes) {
+        this.tileSizes = tileSizes;
+    }
+    
     public List<Loop> getNestedLoops() {
         return nestedLoops;
     }
@@ -62,7 +79,7 @@ public class TiledLoop extends ForLoop {
 
     private void setDependenceVectors(List<DependenceVector> dvs) throws Exception {
         for (DependenceVector dv : dvs) {
-            
+
             boolean legal = false;
 
             DependenceVector newDV = new DependenceVector();
@@ -77,11 +94,11 @@ public class TiledLoop extends ForLoop {
 
                 int direction = dv.getDirection(dvLoop);
 
-                if(direction == DependenceVector.greater && !legal) {
+                if (direction == DependenceVector.greater && !legal) {
                     throw new IllegalDependenceVector(dv, this);
                 }
-                if(direction == DependenceVector.less && !legal) {
-                    legal=true;
+                if (direction == DependenceVector.less && !legal) {
+                    legal = true;
                 }
                 newDV.setDirection(loopInNest, direction);
             }
@@ -102,24 +119,24 @@ public class TiledLoop extends ForLoop {
         int loopsSize = nestedLoops.size();
         int outermostParLoopIdx = -1;
 
-        if(this.dependeceVectors.size()==0){
+        if (this.dependeceVectors.size() == 0) {
             return;
         }
 
         for (int i = 0; i < loopsSize; i++) {
             Loop loop = nestedLoops.get(i);
-            outermostParLoopIdx=i;
+            outermostParLoopIdx = i;
             for (DependenceVector dv : this.dependeceVectors) {
                 int direction = dv.getDirection(loop);
                 if (direction != DependenceVector.equal) {
-                    outermostParLoopIdx=-1;
+                    outermostParLoopIdx = -1;
                     break;
                 }
             }
         }
 
-        if(outermostParLoopIdx!=-1) {
-            this.outermostParallelizableLoop=nestedLoops.get(outermostParLoopIdx);
+        if (outermostParLoopIdx != -1) {
+            this.outermostParallelizableLoop = nestedLoops.get(outermostParLoopIdx);
         }
     }
 
@@ -165,6 +182,8 @@ public class TiledLoop extends ForLoop {
                 origLoop.getStep().clone(),
                 origLoop.getBody().clone(mustHaveAnnotations));
 
+        clon.tileSizes = new HashMap<>(this.tileSizes);
+
         return clon;
     }
 
@@ -176,9 +195,10 @@ public class TiledLoop extends ForLoop {
 
     // public boolean isCrossStripParallel() {
 
-    //     Expression expr = LoopTools.getIncrementExpression(outermostParallelizableLoop);
+    // Expression expr =
+    // LoopTools.getIncrementExpression(outermostParallelizableLoop);
 
-    //     return expr.toString().contains(TilingUtils.TILE_SUFFIX);
+    // return expr.toString().contains(TilingUtils.TILE_SUFFIX);
     // }
 
 }

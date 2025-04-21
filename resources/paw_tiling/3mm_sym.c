@@ -1,18 +1,6 @@
-#line 1 "3mm.c"
-#pragma startinclude #include <stdio.h>
-#line 1
 #include <stdio.h>
-#pragma endinclude
-#line 2
-#pragma startinclude #include <stdlib.h>
-#line 2
 #include <stdlib.h>
-#pragma endinclude
-#line 3
 
-#define NI 256
-#define NJ 256
-#define NK 256
 
 void init_array(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], double C[ni][nj]) {
     for (int i = 0; i < ni; i++) {
@@ -33,6 +21,7 @@ void init_array(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], doub
 }
 
 void matrix_multiply(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj], double C[ni][nj]) {
+    #pragma experimental section start
     for (int i = 0; i < ni; i++) {
         for (int j = 0; j < nj; j++) {
             for (int k = 0; k < nk; k++) {
@@ -40,6 +29,8 @@ void matrix_multiply(int ni, int nj, int nk, double A[ni][nk], double B[nk][nj],
             }
         }
     }
+
+    #pragma experimental section stop
 }
 
 void print_array(int ni, int nj, double C[ni][nj]) {
@@ -52,15 +43,19 @@ void print_array(int ni, int nj, double C[ni][nj]) {
 }
 
 int main() {
-    double (*A)[NK] = malloc(NI * NK * sizeof(double));
-    double (*B)[NJ] = malloc(NK * NJ * sizeof(double));
-    double (*C)[NJ] = malloc(NI * NJ * sizeof(double));
+    int ni = 10000;
+    int nj = 10000;
+    int nk = 10000;
 
-    init_array(NI, NJ, NK, A, B, C);
+    double (*A)[nk] = malloc(ni * nk * sizeof(double));
+    double (*B)[nj] = malloc(nk * nj * sizeof(double));
+    double (*C)[nj] = malloc(ni * nj * sizeof(double));
 
-    matrix_multiply(NI, NJ, NK, A, B, C);
+    init_array(ni, nj, nk, A, B, C);
 
-    print_array(NI, NJ, C);
+    matrix_multiply(ni, nj, nk, A, B, C);
+
+    print_array(ni, nj, C);
 
     free(A);
     free(B);

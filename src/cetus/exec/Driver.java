@@ -12,6 +12,7 @@ import cetus.hir.SymbolTools;
 import cetus.hir.Tools;
 import cetus.transforms.*;
 import cetus.transforms.paw_tiling.ParallelAwareTiling;
+import cetus.transforms.paw_tiling.TilingParams;
 
 import java.io.*;
 import java.util.Arrays;
@@ -350,18 +351,44 @@ public class Driver {
                 "Activate this option to enable parallel aware tiling");
 
         options.add(options.TRANSFORM,
-                ParallelAwareTiling.CORES_PARAM_NAME,
+                TilingParams.CORES_PARAM_NAME,
                 null,
-                "" + ParallelAwareTiling.DEFAULT_PROCESSORS,
+                "" + TilingParams.DEFAULT_PROCESSORS,
                 "N",
-                "To define the number of cores to be used for parallel aware tiling. (default=4). \nThis data is used for load balancing across cores.");
+                TilingParams.CORES_PARAM_DESCR);
 
         options.add(options.TRANSFORM,
-                ParallelAwareTiling.CACHE_PARAM_NAME,
+                TilingParams.CACHE_PARAM_NAME,
                 null,
-                "" + ParallelAwareTiling.DEFAULT_CACHE_SIZE,
+                "" + TilingParams.DEFAULT_CACHE_SIZE_IN_KB,
                 "N",
-                "Define the cache size in KiB. (default=32768 ~32MiB). \nUsed for calculating tile sizes.");
+                TilingParams.CACHE_PARAM_DESCR);
+
+        options.add(options.TRANSFORM,
+                TilingParams.CACHE_LINE_PARAM_NAME,
+                null,
+                "" + TilingParams.DEFAULT_CACHE_ALIGNMENT_IN_BYTES,
+                "N",
+                TilingParams.CACHE_LINE_PARAM_DESCR);
+
+        options.add(options.TRANSFORM,
+                TilingParams.TILING_PROFITABILITY_PARAM_NAME,
+                null,
+                "" + TilingParams.TILING_PROFITABILITY_PARAM_DESCR,
+                "N",
+                TilingParams.DEFAULT_TILING_PROFITABILITY);
+
+        options.add(options.TRANSFORM,
+                TilingParams.SELECTION_ALGORITHM_PARAM_NAME,
+                null,
+                "" + TilingParams.SELECTION_ALGORITHM_DESCR,
+                "N",
+                TilingParams.DEFAULT_SELECTION_ALGORITHM.toString());
+
+        options.add(options.TRANSFORM,
+                TilingParams.FIXED_TILE_SIZE_PARAM_NAME,
+                null,
+                "" + TilingParams.FIXED_TILE_SIZE_DESCR);
 
     }
 
@@ -824,20 +851,12 @@ public class Driver {
             TransformPass.run(new IVSubstitution(program));
         }
 
-
-        
         if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
             AnalysisPass.run(new ArrayPrivatization(program));
         }
 
-        
         if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
             AnalysisPass.run(new DDTDriver(program));
-        }
-
-
-        if (getOptionValue("paw_tiling") != null) {
-            TransformPass.run(new ParallelAwareTiling(program));
         }
 
         if (getOptionValue("reduction") != null && !getOptionValue("reduction").equals("0")) {
@@ -851,6 +870,10 @@ public class Driver {
          */
         if (getOptionValue("loop_interchange") != null) {
             TransformPass.run(new LoopInterchange(program));
+        }
+
+        if (getOptionValue(ParallelAwareTiling.PASS_NAME) != null) {
+            TransformPass.run(new ParallelAwareTiling(program));
         }
 
         if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
@@ -868,6 +891,7 @@ public class Driver {
         if (getOptionValue("profile-loops") != null) {
             TransformPass.run(new LoopProfiler(program));
         }
+
     }
 
     /**
