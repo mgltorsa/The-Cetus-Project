@@ -6,6 +6,25 @@
     "configurations": [
         {
             "type": "java",
+            "name": "PAW_TILING PREPROCESSED 3mm",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -preprocessor='cpp -C -I. -P -dD' -profitable-omp=0 -cores=4 -tile-profitability=0 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/profiled/3mm.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/profiled"
+            }
+        },
+        {
+            "type": "java",
+            "name": "PAW_TILING MACROS",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -preprocessor='cpp -C -I. -P -dD' -profitable-omp=0 -cores=4 -tile-profitability=0 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/macros_example.c",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
             "name": "PAW_TILING no_tiled default",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
