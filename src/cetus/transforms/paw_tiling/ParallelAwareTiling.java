@@ -279,8 +279,17 @@ public class ParallelAwareTiling extends TransformPass {
             optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
                     dataFullSize, targetLoop.clone(false), clonedTiledLoop);
 
+                    optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
+                    dataFullSize, targetLoop.clone(false), clonedTiledLoop);
+
             if (optimizedStatement instanceof IfStatement) {
-                clonedTiledLoop = (TiledLoop) ((IfStatement) optimizedStatement).getElseStatement();
+                CompoundStatement elseStmt = (CompoundStatement) ((IfStatement) optimizedStatement).getElseStatement();
+                for (Traversable stmt : elseStmt.getChildren()) {
+                    if (! ( stmt instanceof TiledLoop) ) continue;
+
+                    clonedTiledLoop = (TiledLoop) stmt;
+                    break;
+                }
             }
         }
 
