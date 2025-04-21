@@ -279,8 +279,6 @@ public class ParallelAwareTiling extends TransformPass {
             optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
                     dataFullSize, targetLoop.clone(false), clonedTiledLoop);
 
-                    optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
-                    dataFullSize, targetLoop.clone(false), clonedTiledLoop);
 
             if (optimizedStatement instanceof IfStatement) {
                 CompoundStatement elseStmt = (CompoundStatement) ((IfStatement) optimizedStatement).getElseStatement();
