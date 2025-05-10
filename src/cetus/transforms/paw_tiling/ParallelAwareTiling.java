@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import cetus.analysis.AnalysisPass;
 import cetus.analysis.ArrayPrivatization;
@@ -44,7 +45,6 @@ import cetus.hir.Symbolic;
 import cetus.hir.TranslationUnit;
 import cetus.hir.Traversable;
 import cetus.transforms.TransformPass;
-import cetus.transforms.paw_tiling.TilingParams.SelectionAlgorithm;
 import cetus.utils.ArrayUtils;
 import cetus.utils.ExperimentalSectionUtils;
 import cetus.utils.MemoryUtils;
@@ -119,6 +119,14 @@ public class ParallelAwareTiling extends TransformPass {
         return validLoops;
     }
 
+    public void checkPreconditions() {
+        String ddtOption = Driver.getOptionValue("ddt");
+        if (ddtOption != null && !ddtOption.equals("0")) {
+            // Run DDT if disabled
+            AnalysisPass.run(new DDTDriver(program)); // DDT Allow many things like loop naming and graph calculation
+        }
+    }
+
     @Override
     public void start() {
         // Implementation of the parallel-aware tiling transformation
@@ -162,6 +170,71 @@ public class ParallelAwareTiling extends TransformPass {
     }
 
     private void updateLoopInfo(TiledLoop loop) {
+        balanceTileSizesAndEnsuringParallelizability(loop);
+        setupTileSizesMetadata(loop);
+    }
+
+    private String calculateTileSizeValue(Expression tileSize) {
+        if (tileSize instanceof IntegerLiteral) {
+            return tileSize.toString();
+        }
+        long tileSizeValueLong = Symbolic.getConstantCoefficient(tileSize);
+        if (tileSizeValueLong > 0) {
+            return "coeff_" + String.valueOf(tileSizeValueLong);
+        }
+
+        List<Expression> factors = Symbolic.getFactors(tileSize);
+        
+        List<IntegerLiteral> integerFactors = factors.stream().filter(factor -> factor instanceof IntegerLiteral).map(factor -> (IntegerLiteral) factor).collect(Collectors.toList());
+
+        if (integerFactors.size() >= 1) {
+            StringBuilder sb = new StringBuilder();
+
+            for (int i = 0; i < integerFactors.size(); i++) {
+                IntegerLiteral factor = integerFactors.get(i);
+                String factorStr = "fc_"+ i + "#" + factor.toString();
+                sb.append(factorStr);
+            }
+            return sb.toString();
+        }
+
+        List<Expression> terms = Symbolic.getTerms(tileSize);
+
+        List<IntegerLiteral> integerTerms = terms.stream().filter(term -> term instanceof IntegerLiteral).map(term -> (IntegerLiteral) term).collect(Collectors.toList());
+        
+        if (integerTerms.size() >= 1) {
+            StringBuilder sb = new StringBuilder();
+            for (IntegerLiteral term : integerTerms) {
+                String termStr = "term_" + term.toString();
+                sb.append(termStr);
+            }
+            return sb.toString();
+        }
+
+
+        return "complex";
+
+    }
+
+    private void setupTileSizesMetadata(TiledLoop loop) {
+        PrintTools.printlnDebug("Setting up tile sizes metadata for loop: " + loop);
+        LoopTools.addLoopName(program, true);
+        Map<Expression, Expression> tileSizes = loop.getTileSizes();
+        for (Expression tileSizeIndexVar : tileSizes.keySet()) {
+            String loopName = LoopTools.getLoopName(loop);
+            String tileSizeName = tileSizeIndexVar.toString();
+
+            Expression actualTileSize = tileSizes.get(tileSizeIndexVar);
+            String tileSizeValue = calculateTileSizeValue(actualTileSize);
+
+            String metadata = String.format("%s=%s#%s", loopName, tileSizeName, tileSizeValue);
+
+            CetusAnnotation cetusAnnot = new CetusAnnotation("paw_tiling", metadata);
+            loop.annotateBefore(cetusAnnot);
+        }
+    }
+
+    private void balanceTileSizesAndEnsuringParallelizability(TiledLoop loop) {
         PrintTools.printlnDebug("Balancing tile size for loop: " + loop);
         SymbolTable symbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent());
         Map<Expression, Expression> tileSizes = loop.getTileSizes();
@@ -228,10 +301,11 @@ public class ParallelAwareTiling extends TransformPass {
                 continue;
 
             balancedTile = tileSizes.get(tileSize);
-            
-            // Expression coresExpression = new IntegerLiteral(tilingParams.getNumOfProcessors());
+
+            // Expression coresExpression = new
+            // IntegerLiteral(tilingParams.getNumOfProcessors());
             // if (tilingParams.getTypeSelectionAlgo() != SelectionAlgorithm.FIXED) {
-            //     balancedTile = Symbolic.divide(balancedTile, coresExpression);
+            // balancedTile = Symbolic.divide(balancedTile, coresExpression);
             // }
 
             int integerSizeInBits = ArrayUtils.getTypeSizeInBits(Specifier.INT);
@@ -279,11 +353,11 @@ public class ParallelAwareTiling extends TransformPass {
             optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
                     dataFullSize, targetLoop.clone(false), clonedTiledLoop);
 
-
             if (optimizedStatement instanceof IfStatement) {
                 CompoundStatement elseStmt = (CompoundStatement) ((IfStatement) optimizedStatement).getElseStatement();
                 for (Traversable stmt : elseStmt.getChildren()) {
-                    if (! ( stmt instanceof TiledLoop) ) continue;
+                    if (!(stmt instanceof TiledLoop))
+                        continue;
 
                     clonedTiledLoop = (TiledLoop) stmt;
                     break;
@@ -317,24 +391,38 @@ public class ParallelAwareTiling extends TransformPass {
     }
 
     public void reRunPasses() {
-        AnalysisPass.run(new ArrayPrivatization(program));
-        AnalysisPass.run(new DDTDriver(program));
 
-        try {
-            AnalysisPass.run(new Reduction(program));
+        String privatizeOption = Driver.getOptionValue("private");
+        String ddtOption = Driver.getOptionValue("ddt");
+        String reductionOption = Driver.getOptionValue("reduction");
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (privatizeOption != null && !privatizeOption.equals("0")) {
+            AnalysisPass.run(new ArrayPrivatization(program));
+        }
+        if (ddtOption != null && !ddtOption.equals("0")) {
+            AnalysisPass.run(new DDTDriver(program));
+        }
+        if (reductionOption != null && !reductionOption.equals("0")) {
+            try {
+                AnalysisPass.run(new Reduction(program));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
-        AnalysisPass.run(new LoopParallelizationPass(program));
+        // String profitableOmpCopy = Driver.getOptionValue("profitable-omp");
 
-        String profitableOmpCopy = Driver.getOptionValue("profitable-omp");
-
+        // TODO: Fix this. Since in tiling tiles are usually smaller, it is not
+        // profitable to run ompGen
+        // However, tiles do not represent the actual parallel iterations, so we need to
+        // run ompGen after
+        // loop parallelization pass.
         Driver.setOptionValue("profitable-omp", "0");
-        CodeGenPass.run(new ompGen(program));
 
-        Driver.setOptionValue("profitable-omp", profitableOmpCopy);
+        // CodeGenPass.run(new ompGen(program));
+
+        // Driver.setOptionValue("profitable-omp", profitableOmpCopy);
 
     }
 
@@ -444,7 +532,14 @@ public class ParallelAwareTiling extends TransformPass {
         LinkedList<Loop> nestedLoops = new LinkedList<>();
         new DFIterator<Loop>(loop, Loop.class).forEachRemaining(nestedLoops::add);
 
-        List<DependenceVector> originalDvs = program.getDDGraph().getDirectionMatrix(nestedLoops);
+        List<DependenceVector> originalDvs = new ArrayList<>();
+        if (program.getDDGraph() != null) {
+            originalDvs = program.getDDGraph().getDirectionMatrix(nestedLoops);
+            if (originalDvs == null) {
+                PrintTools.printlnDebug("Original DVs are null for loop: " + loop);
+                originalDvs = new ArrayList<>();
+            }
+        }
 
         TiledLoop tiledLoop = new TiledLoop(loop, originalDvs);
         List<DependenceVector> curDvs = originalDvs;

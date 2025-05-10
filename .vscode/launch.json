@@ -3,65 +3,84 @@
     // Hover to view descriptions of existing attributes.
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
+    "inputs": [
+        {
+            "id": "PolyBenchmarkName",
+            "type": "pickString",
+            "description": "Select benchmark type",
+            "options": ["linear-algebra/blas", "linear-algebra/kernels", "linear-algebra/solver", "stencils", "medley"]
+        },
+        {
+            "id": "PolyRoutineName",
+            "type": "pickString",
+            "description": "Select routine",
+            "options": ["2mm", "3mm", "gemm", "cholesky", "lu", "floyd-warshall", "heat-3d", "jacobi-2d"],
+        },
+        {
+            "id": "NPBbenchmarkName",
+            "type": "pickString",
+            "description": "Select benchmark",
+            "options": ["BT", "SP", "MG", "LU"]
+        },
+        {
+            "id": "NPBRoutineName",
+            "type": "pickString",
+            "description": "Select routine",
+            "options": ["x_solve_b", "rhs_b", "y_solve_b", "exact_rhs_b", "mg_rprj3", "mg_resid", "pintgr_b"]
+        },
+        {
+            "id": "TilingSelectionAlgorithm",
+            "type": "pickString",
+            "description": "Select tiling selection algorithm",
+            "options": ["selection=LRW", "selection=NT", "tileSizes=16", "tileSizes=32", "tileSizes=64", "tileSizes=128"]
+        },
+  
+    ],
+    
     "configurations": [
         {
             "type": "java",
-            "name": "PAW_TILING PREPROCESSED 3mm",
+            "name": "NAS Benchmarks - Parallel Tiling",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -preprocessor='cpp -C -I. -P -dD' -profitable-omp=0 -cores=4 -tile-profitability=0 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/profiled/3mm.c",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -cores=4 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}/${input:NPBRoutineName}.c",
             "console": "integratedTerminal",
             "env": {
-                "CPATH": "/mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/profiled"
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/common:/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}"
             }
         },
         {
             "type": "java",
-            "name": "PAW_TILING MACROS",
+            "name": "NAS Benchmarks - Serial Tiling",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -preprocessor='cpp -C -I. -P -dD' -profitable-omp=0 -cores=4 -tile-profitability=0 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/macros_example.c",
-            "console": "integratedTerminal"
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -ompGen=0 -cores=4 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}/${input:NPBRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/common:/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}"
+            }
         },
         {
             "type": "java",
-            "name": "PAW_TILING no_tiled default",
+            "name": "Polybench Benchmarks - Parallel Tiling",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/no_tiled.c",
-            "console": "integratedTerminal"
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -cores=4 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}//${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
         },
         {
             "type": "java",
-            "name": "PAW_TILING 3mm TILESIZES=32",
+            "name": "Polybench Benchmarks - Serial Tiling",
             "request": "launch",
             "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -tileSizes=32 -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
-            "console": "integratedTerminal"
-        },
-        {
-            "type": "java",
-            "name": "PAW_TILING 3mm NT-ALGO",
-            "request": "launch",
-            "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -selection=NT -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
-            "console": "integratedTerminal"
-        },
-        {
-            "type": "java",
-            "name": "PAW_TILING 3mm LRW-ALGO",
-            "request": "launch",
-            "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -selection=LRW -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm.c",
-            "console": "integratedTerminal"
-        },
-        {
-            "type": "java",
-            "name": "PAW_TILING 3mm_sym NT-ALGO",
-            "request": "launch",
-            "mainClass": "cetus.exec.Driver",
-            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -cores=4 -tile-profitability=0 -selection=NT -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/paw_tiling/3mm_sym.c",
-            "console": "integratedTerminal"
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -cores=4 -ompGen=0 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}/${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
         }
-    ]
+    ],
 }

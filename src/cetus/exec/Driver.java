@@ -872,6 +872,7 @@ public class Driver {
             TransformPass.run(new LoopInterchange(program));
         }
 
+        //IMPORTANT: ParallelAwareTiling must be run before LoopParallelizationPass and OmpGen
         if (getOptionValue(ParallelAwareTiling.PASS_NAME) != null) {
             TransformPass.run(new ParallelAwareTiling(program));
         }

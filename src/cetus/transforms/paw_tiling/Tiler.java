@@ -3,7 +3,6 @@ package cetus.transforms.paw_tiling;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 import cetus.analysis.DependenceVector;
 import cetus.analysis.LoopTools;
@@ -20,6 +19,7 @@ import cetus.hir.IRTools;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
 import cetus.hir.MinMaxExpression;
+import cetus.hir.PrintTools;
 import cetus.hir.Statement;
 import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
@@ -32,15 +32,21 @@ public class Tiler {
     public static final String CROSS_TILE_SUFFIX = "_cetus_cross";
     public static final String IN_TILE_PREFIX = "cetus_tile_";
 
-    public static TiledLoop tile(SymbolTable variableDeclarationSpace, ForLoop outermostLoop, Expression tileSize,
-            int targetLoopPos, List<DependenceVector> dependenceVectors)
-            throws Exception {
-        return tile(variableDeclarationSpace, outermostLoop, tileSize, targetLoopPos, null,
-                dependenceVectors);
+    public static ForLoop getFarthestAncestorLoop(ForLoop loop) {
+        ForLoop currentAncestor = IRTools.getAncestorOfType(loop, ForLoop.class);
+        ForLoop farthestAncestor = loop;
+        do {
+            currentAncestor = IRTools.getAncestorOfType(currentAncestor, ForLoop.class);
+            if (currentAncestor != null) {
+                farthestAncestor = currentAncestor;
+            }
+        } while (currentAncestor != null);
+
+        return farthestAncestor;
     }
 
     public static TiledLoop tile(SymbolTable variableDeclarationSpace, ForLoop outermostLoop, Expression tileSize,
-            int targetLoopPos, Map<String, Boolean> stripmined, List<DependenceVector> dependenceVectors)
+            int targetLoopPos, List<DependenceVector> dependenceVectors)
             throws Exception {
 
         ForLoop tiledLoop = null;
@@ -52,37 +58,16 @@ public class Tiler {
         ForLoop crossStripLoop = (ForLoop) stripminedLoops[0];
         ForLoop inStripLoop = (ForLoop) stripminedLoops[1];
 
-        if (stripmined != null) {
-            stripmined.put(LoopTools.getLoopIndexSymbol(targetLoop).getSymbolName(), true);
-            stripmined.put(LoopTools.getLoopIndexSymbol(crossStripLoop).getSymbolName(), true);
-        }
+        // get farthest ancestor loop
+        ForLoop farthestAncestorLoop = getFarthestAncestorLoop(targetLoop);
+        ForLoop newForLoop = crossStripLoop.clone(false);
+        newForLoop.setBody(farthestAncestorLoop.clone(false));
 
-        tiledLoop = crossStripLoop;
+        permuteInCrossStripLoop(newForLoop, inStripLoop, targetLoop);
 
-        if (targetLoopPos - 1 >= 0) {
-            ForLoop parentLoop = loops.get(targetLoopPos - 1);
+        tiledLoop = newForLoop.clone(false);
 
-            while (parentLoop != null) {
-                ForLoop ancestorLoop = IRTools.getAncestorOfType(parentLoop, ForLoop.class);
-                if (ancestorLoop == null)
-                    break;
-
-                if (isCrossStripLoop(ancestorLoop))
-                    break;
-
-                Statement body = getUpdatedBodyFromParent(parentLoop.clone(false), inStripLoop);
-                crossStripLoop.setBody(body);
-                parentLoop = ancestorLoop;
-
-            }
-
-            swapIn(crossStripLoop, parentLoop);
-            parentLoop.setBody(crossStripLoop.clone(false));
-
-            crossStripLoop = parentLoop;
-
-            tiledLoop = outermostLoop;
-        }
+        PrintTools.printlnDebug("New for loop: " + newForLoop.toString());
 
         List<DependenceVector> newDVS = calculateAfterTilingDVs(dependenceVectors, tiledLoop,
                 (Loop) inStripLoop,
@@ -92,28 +77,6 @@ public class Tiler {
         Expression indexVar = LoopTools.getIndexVariable(newTiledLoop);
         newTiledLoop.setTileSize(indexVar, tileSize);
         return newTiledLoop;
-    }
-
-    private static Statement getUpdatedBodyFromParent(ForLoop parentLoop, ForLoop inStripLoop) {
-        Statement body = parentLoop.getBody().clone(false);
-        List<Traversable> children = body.getChildren();
-        int childToReplaceIdx = -1;
-        for (int i = 0; i < children.size(); i++) {
-            Traversable child = children.get(i);
-            if (child instanceof ForLoop) {
-                ForLoop childLoop = (ForLoop) child;
-                Expression originalIndexVar = LoopTools.getIndexVariable(childLoop);
-                Expression newIndexVar = LoopTools.getIndexVariable(inStripLoop);
-                if (!originalIndexVar.toString().toLowerCase().contains(newIndexVar.toString().toLowerCase())) {
-                    continue;
-                }
-                childToReplaceIdx = i;
-                break;
-            }
-        }
-        body.setChild(childToReplaceIdx, inStripLoop.clone());
-        parentLoop.setBody(body);
-        return parentLoop;
     }
 
     public static boolean isCrossStripLoop(ForLoop loop) {
@@ -302,6 +265,38 @@ public class Tiler {
         ForLoop crossStripLoop = createCrossStripLoop(loop, strip, crossIndex, inStripLoop);
 
         return new ForLoop[] { crossStripLoop, inStripLoop };
+
+    }
+
+    public static void permuteInCrossStripLoop(ForLoop crossStripLoop, ForLoop inStripLoop,
+            ForLoop originalTargetLoop) {
+        // look for the target loop in the cross strip loop
+        DFIterator<Traversable> children = new DFIterator<>(crossStripLoop.getBody(), Traversable.class);
+        while (children.hasNext()) {
+            Traversable child = children.next();
+            if (child == null || !(child instanceof ForLoop)) {
+                continue;
+            }
+
+            ForLoop childLoop = (ForLoop) child;
+            Symbol childLoopSymbol = LoopTools.getLoopIndexSymbol(childLoop);
+
+            if (!childLoopSymbol.getSymbolName()
+                    .equals(LoopTools.getLoopIndexSymbol(originalTargetLoop).getSymbolName())) {
+                continue;
+            }
+
+            // replace the target loop with the in strip loop
+
+            ForLoop targetLoop = childLoop;
+            Statement newInitStmt = inStripLoop.getInitialStatement().clone();
+            Expression newCond = inStripLoop.getCondition().clone();
+            Expression newStep = inStripLoop.getStep().clone();
+
+            targetLoop.setInitialStatement(newInitStmt);
+            targetLoop.setCondition(newCond);
+            targetLoop.setStep(newStep);
+        }
 
     }
 
