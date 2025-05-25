@@ -35,6 +35,7 @@ import cetus.hir.IfStatement;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Literal;
 import cetus.hir.Loop;
+import cetus.hir.PragmaAnnotation;
 import cetus.hir.PrintTools;
 import cetus.hir.Program;
 import cetus.hir.Specifier;
@@ -229,8 +230,9 @@ public class ParallelAwareTiling extends TransformPass {
 
             String metadata = String.format("%s=%s#%s", loopName, tileSizeName, tileSizeValue);
 
-            CetusAnnotation cetusAnnot = new CetusAnnotation("paw_tiling", metadata);
-            loop.annotateBefore(cetusAnnot);
+            String pragmaStr = String.format("c_paw_tiling %s", metadata);
+            PragmaAnnotation pragmaAnnot = new PragmaAnnotation(pragmaStr);
+            loop.annotateBefore(pragmaAnnot);
         }
     }
 

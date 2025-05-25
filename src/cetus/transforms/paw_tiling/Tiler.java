@@ -19,6 +19,7 @@ import cetus.hir.IRTools;
 import cetus.hir.IntegerLiteral;
 import cetus.hir.Loop;
 import cetus.hir.MinMaxExpression;
+import cetus.hir.PragmaAnnotation;
 import cetus.hir.PrintTools;
 import cetus.hir.Statement;
 import cetus.hir.Symbol;
@@ -435,7 +436,7 @@ public class Tiler {
 
         ForLoop crossStripLoop = new ForLoop(newLoopInitStm, newLoopCondition, newLoopStepExp, inStripLoop);
 
-        CetusAnnotation tilingAnnotation = new CetusAnnotation("paw_tiling", "true");
+        PragmaAnnotation tilingAnnotation = new PragmaAnnotation("c_paw_tiling");
         crossStripLoop.annotateBefore(tilingAnnotation);
         return crossStripLoop;
     }
