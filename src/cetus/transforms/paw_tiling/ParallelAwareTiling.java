@@ -185,15 +185,16 @@ public class ParallelAwareTiling extends TransformPass {
         }
 
         List<Expression> factors = Symbolic.getFactors(tileSize);
-        
-        List<IntegerLiteral> integerFactors = factors.stream().filter(factor -> factor instanceof IntegerLiteral).map(factor -> (IntegerLiteral) factor).collect(Collectors.toList());
+
+        List<IntegerLiteral> integerFactors = factors.stream().filter(factor -> factor instanceof IntegerLiteral)
+                .map(factor -> (IntegerLiteral) factor).collect(Collectors.toList());
 
         if (integerFactors.size() >= 1) {
             StringBuilder sb = new StringBuilder();
 
             for (int i = 0; i < integerFactors.size(); i++) {
                 IntegerLiteral factor = integerFactors.get(i);
-                String factorStr = "fc_"+ i + "#" + factor.toString();
+                String factorStr = "fc_" + i + "#" + factor.toString();
                 sb.append(factorStr);
             }
             return sb.toString();
@@ -201,8 +202,9 @@ public class ParallelAwareTiling extends TransformPass {
 
         List<Expression> terms = Symbolic.getTerms(tileSize);
 
-        List<IntegerLiteral> integerTerms = terms.stream().filter(term -> term instanceof IntegerLiteral).map(term -> (IntegerLiteral) term).collect(Collectors.toList());
-        
+        List<IntegerLiteral> integerTerms = terms.stream().filter(term -> term instanceof IntegerLiteral)
+                .map(term -> (IntegerLiteral) term).collect(Collectors.toList());
+
         if (integerTerms.size() >= 1) {
             StringBuilder sb = new StringBuilder();
             for (IntegerLiteral term : integerTerms) {
@@ -211,7 +213,6 @@ public class ParallelAwareTiling extends TransformPass {
             }
             return sb.toString();
         }
-
 
         return "complex";
 
@@ -398,12 +399,12 @@ public class ParallelAwareTiling extends TransformPass {
         String ddtOption = Driver.getOptionValue("ddt");
         String reductionOption = Driver.getOptionValue("reduction");
 
-        if (privatizeOption != null && !privatizeOption.equals("0")) {
-            AnalysisPass.run(new ArrayPrivatization(program));
-        }
-        if (ddtOption != null && !ddtOption.equals("0")) {
-            AnalysisPass.run(new DDTDriver(program));
-        }
+        // if (privatizeOption != null && !privatizeOption.equals("0")) {
+        AnalysisPass.run(new ArrayPrivatization(program));
+        // }
+        // if (ddtOption != null && !ddtOption.equals("0")) {
+        AnalysisPass.run(new DDTDriver(program));
+        // }
         if (reductionOption != null && !reductionOption.equals("0")) {
             try {
                 AnalysisPass.run(new Reduction(program));
