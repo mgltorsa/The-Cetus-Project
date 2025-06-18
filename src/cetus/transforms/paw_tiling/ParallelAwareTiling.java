@@ -10,11 +10,8 @@ import cetus.analysis.AnalysisPass;
 import cetus.analysis.ArrayPrivatization;
 import cetus.analysis.DDTDriver;
 import cetus.analysis.DependenceVector;
-import cetus.analysis.LoopParallelizationPass;
 import cetus.analysis.LoopTools;
 import cetus.analysis.Reduction;
-import cetus.codegen.CodeGenPass;
-import cetus.codegen.ompGen;
 import cetus.exec.Driver;
 import cetus.hir.Annotation;
 import cetus.hir.AnnotationDeclaration;
@@ -45,6 +42,7 @@ import cetus.hir.SymbolTable;
 import cetus.hir.Symbolic;
 import cetus.hir.TranslationUnit;
 import cetus.hir.Traversable;
+import cetus.transforms.LoopInterchange;
 import cetus.transforms.TransformPass;
 import cetus.utils.ArrayUtils;
 import cetus.utils.ExperimentalSectionUtils;
@@ -130,6 +128,15 @@ public class ParallelAwareTiling extends TransformPass {
 
     @Override
     public void start() {
+
+
+        //perform loop interchange
+        try {
+            TransformPass.run(new LoopInterchange(program));
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
+
         // Implementation of the parallel-aware tiling transformation
         // This is a placeholder for the actual implementation
         PrintTools.printlnDebug("Starting parallel-aware tiling transformation...");
@@ -395,17 +402,20 @@ public class ParallelAwareTiling extends TransformPass {
 
     public void reRunPasses() {
 
+        boolean isSerialTiling = Driver.getOptionValue(PASS_NAME) != null && !Driver.getOptionValue(PASS_NAME).equals("0");
+
         String privatizeOption = Driver.getOptionValue("private");
         String ddtOption = Driver.getOptionValue("ddt");
         String reductionOption = Driver.getOptionValue("reduction");
 
-        // if (privatizeOption != null && !privatizeOption.equals("0")) {
-        AnalysisPass.run(new ArrayPrivatization(program));
-        // }
-        // if (ddtOption != null && !ddtOption.equals("0")) {
-        AnalysisPass.run(new DDTDriver(program));
-        // }
-        if (reductionOption != null && !reductionOption.equals("0")) {
+
+        if (!isSerialTiling && privatizeOption != null && !privatizeOption.equals("0")) {
+            AnalysisPass.run(new ArrayPrivatization(program));
+        }
+        if (!isSerialTiling && ddtOption != null && !ddtOption.equals("0")) {
+            AnalysisPass.run(new DDTDriver(program));
+        }
+        if (!isSerialTiling && reductionOption != null && !reductionOption.equals("0")) {
             try {
                 AnalysisPass.run(new Reduction(program));
 
