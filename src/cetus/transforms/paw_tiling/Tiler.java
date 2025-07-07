@@ -1,8 +1,10 @@
 package cetus.transforms.paw_tiling;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map.Entry;
 
 import cetus.analysis.DependenceVector;
 import cetus.analysis.LoopTools;
@@ -95,7 +97,18 @@ public class Tiler {
 
         List<DependenceVector> newDVS = new ArrayList<>();
         for (DependenceVector originalDV : originalDVs) {
-            newDVS.addAll(calculateAfterTilingDV(originalDV, newLoopNest, inStripLoop, crossStripLoop));
+            LinkedHashMap<Loop,Integer> directions =  originalDV.getDirectionVector();
+            boolean allNils = true;
+            for (Entry<Loop,Integer> directionEntry : directions.entrySet()) {
+                if(directionEntry.getValue() != DependenceVector.nil){
+                    allNils=false;
+                    break;
+                }
+            }
+            if(allNils) continue;
+
+            List<DependenceVector> postTilingDvs = calculateAfterTilingDV(originalDV, newLoopNest, inStripLoop, crossStripLoop);
+            newDVS.addAll(postTilingDvs);
         }
         return newDVS;
     }
@@ -145,7 +158,7 @@ public class Tiler {
                     DependenceVector newDV = new DependenceVector(newBaseDV);
                     newDV.setDirection(actualInStripLoop, DependenceVector.equal);
                     newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-
+                    
                     newDVS.add(newDV);
                     break;
                 }

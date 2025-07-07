@@ -10,9 +10,11 @@ import cetus.analysis.AnalysisPass;
 import cetus.analysis.ArrayPrivatization;
 import cetus.analysis.DDTDriver;
 import cetus.analysis.DependenceVector;
+import cetus.analysis.LoopParallelizationPass;
 import cetus.analysis.LoopTools;
 import cetus.analysis.Reduction;
 import cetus.exec.Driver;
+import cetus.hir.Annotatable;
 import cetus.hir.Annotation;
 import cetus.hir.AnnotationDeclaration;
 import cetus.hir.ArrayAccess;
@@ -129,8 +131,7 @@ public class ParallelAwareTiling extends TransformPass {
     @Override
     public void start() {
 
-
-        //perform loop interchange
+        // perform loop interchange
         try {
             TransformPass.run(new LoopInterchange(program));
         } catch (Exception e) {
@@ -178,8 +179,23 @@ public class ParallelAwareTiling extends TransformPass {
     }
 
     private void updateLoopInfo(TiledLoop loop) {
+        // tagParallelLoops(loop);
         balanceTileSizesAndEnsuringParallelizability(loop);
         setupTileSizesMetadata(loop);
+    }
+
+    private void tagParallelLoops(TiledLoop loop) {
+        ForLoop parallelLoop = loop.getOutermostParallelizableLoop();
+        if(parallelLoop == null) {
+            return;
+        }
+        boolean isParallelizationEnabled = Driver.isIncluded("parallelize-loops",
+                "Loop", LoopTools.getLoopName((Statement) loop));
+        if (isParallelizationEnabled) {
+            CetusAnnotation note = new CetusAnnotation();
+            note.put("parallel", "true");
+            ((Annotatable) parallelLoop).annotate(note);
+        }
     }
 
     private String calculateTileSizeValue(Expression tileSize) {
@@ -402,12 +418,11 @@ public class ParallelAwareTiling extends TransformPass {
 
     public void reRunPasses() {
 
-        boolean isSerialTiling = Driver.getOptionValue(PASS_NAME) != null && !Driver.getOptionValue(PASS_NAME).equals("0");
+        boolean isSerialTiling = Driver.getOptionValue(PASS_NAME).equals("0");
 
-        String privatizeOption = Driver.getOptionValue("private");
+        String privatizeOption = Driver.getOptionValue("privatize");
         String ddtOption = Driver.getOptionValue("ddt");
         String reductionOption = Driver.getOptionValue("reduction");
-
 
         if (!isSerialTiling && privatizeOption != null && !privatizeOption.equals("0")) {
             AnalysisPass.run(new ArrayPrivatization(program));
@@ -554,7 +569,7 @@ public class ParallelAwareTiling extends TransformPass {
             }
         }
 
-        TiledLoop tiledLoop = new TiledLoop(loop, originalDvs);
+        TiledLoop tiledLoop = new TiledLoop(loop.clone(false), originalDvs);
         List<DependenceVector> curDvs = originalDvs;
         for (int i = 0; i < nestedLoops.size(); i++) {
             ForLoop currNestedLoop = (ForLoop) nestedLoops.get(i);
@@ -580,7 +595,12 @@ public class ParallelAwareTiling extends TransformPass {
 
             curDvs = tiledLoop.getDependenceVectors();
         }
+
+        tiledLoop.setNewDependenceVectors(curDvs);
         tiledLoop.setTileSizes(tileSizes);
+        tiledLoop.setOriginalLoop(loop);
+        tiledLoop.setOriginalDvs(originalDvs);
+        tiledLoop.calculateOutermostParallelLoop();
         return tiledLoop;
     }
 

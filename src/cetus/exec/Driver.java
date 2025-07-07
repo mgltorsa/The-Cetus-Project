@@ -348,12 +348,12 @@ public class Driver {
 
         options.add(options.TRANSFORM,
                 ParallelAwareTiling.PASS_NAME,
-                "1", 
-                "1",
+                null,
+                null,
                 "N",
                 "Activate this option to enable parallel aware tiling\n"
-                + "      =0 force to serial tiling\n"
-                + "      =1 enable");
+                        + "      =0 force to serial tiling\n"
+                        + "      =1 enable");
 
         options.add(options.TRANSFORM,
                 TilingParams.CORES_PARAM_NAME,
@@ -877,15 +877,15 @@ public class Driver {
             TransformPass.run(new LoopInterchange(program));
         }
 
+        if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
+            AnalysisPass.run(new LoopParallelizationPass(program));
+        }
         // IMPORTANT: ParallelAwareTiling must be run before LoopParallelizationPass and
         // OmpGen
         if (getOptionValue(ParallelAwareTiling.PASS_NAME) != null) {
             TransformPass.run(new ParallelAwareTiling(program));
         }
 
-        if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
-            AnalysisPass.run(new LoopParallelizationPass(program));
-        }
         if (getOptionValue("ompGen") != null && !getOptionValue("ompGen").equals("0")) {
             CodeGenPass.run(new ompGen(program));
         }

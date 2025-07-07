@@ -81,6 +81,17 @@
             "env": {
                 "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
             }
+        },
+        {
+            "type": "java",
+            "name": "Polybench Benchmarks - Cetus",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}/${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
         }
     ],
 }
