@@ -148,7 +148,7 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
         long elementSizeInBits = ArrayUtils.getTypeSizeInBits(access);
 
         // Compute maximum block dimension allowed by the cache:
-        // 3 * b * b * elementSize <= cacheSize ==> b <= sqrt(cacheSize/(3*elementSize))
+        // block * b * b * elementSize <= cacheSize ==> b <= sqrt(cacheSize/(3*elementSize))
         long maxBlockForCache = (long) Math
                 .floor(Math.sqrt((double) cacheSizeInBits / (numberOfAccesses * elementSizeInBits)));
 
