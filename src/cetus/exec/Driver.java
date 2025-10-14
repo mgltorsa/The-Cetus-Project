@@ -185,6 +185,14 @@ public class Driver {
                         + "      =1 enable only scalar privatization\n"
                         + "      =2 enable scalar and array privatization");
         options.add(options.ANALYSIS,
+                "reuse-vector-analysis",
+                "1",
+                "N",
+                "Perform reuse vector analysis (ON=1)\n"
+                        + "      =0 force to disable\n" // in case -parallelize-loops is on, but user wants to disable
+                                                        // this option
+                        + "      =1 enable reuse vector analysis");
+        options.add(options.ANALYSIS,
                 "reduction", // not always on, but if on without value, "2" assigned automatically
                 "2", // move option dependences analysis up since -parallelize-loops=1 is default now
                 "2",
@@ -862,6 +870,10 @@ public class Driver {
 
         if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
             AnalysisPass.run(new DDTDriver(program));
+        }
+
+        if (getOptionValue("reuse-vector-analysis") != null && !getOptionValue("reuse-vector-analysis").equals("0")) {
+            AnalysisPass.run(new ReuseVectorAnalysis(program));
         }
 
         if (getOptionValue("reduction") != null && !getOptionValue("reduction").equals("0")) {

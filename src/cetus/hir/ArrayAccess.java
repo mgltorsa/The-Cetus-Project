@@ -191,4 +191,8 @@ public class ArrayAccess extends Expression {
         class_print_method = m;
     }
 
+    public List<Expression> getSubscriptList() {
+        return getIndices();
+    }
+
 }
