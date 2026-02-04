@@ -3,6 +3,14 @@
         "timers.h": "c",
         "type_traits": "cpp",
         "stdio.h": "c",
-        "random": "c"
+        "random": "c",
+        "cholmod_template.h": "c",
+        "cholmod_internal.h": "c",
+        "stdlib.h": "c",
+        "array": "c",
+        "string": "c",
+        "string_view": "c",
+        "ranges": "c",
+        "span": "c"
     }
 }

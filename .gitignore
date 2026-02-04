@@ -1,5 +1,19 @@
+<<<<<<< HEAD
 bin
 cetus_output
 class
 **.env
 resources/pcaot
+=======
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/tasks.json
+bin/
+cetus_output/
+class/
+cppinput**
+lib/cetus.jar
+out/
+
+lib/json.jar
+>>>>>>> SubSub_Analysis
