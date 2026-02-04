@@ -92,6 +92,7 @@ public abstract class Annotation extends HashMap<String, Object> {
         }
         o.position = this.position;
         o.skip_print = this.skip_print;
+        
         // ir are overwritten only by annotatable.annotate().
         return o;
     }

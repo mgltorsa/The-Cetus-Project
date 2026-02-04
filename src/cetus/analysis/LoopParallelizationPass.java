@@ -3,14 +3,15 @@ package cetus.analysis;
 import cetus.exec.Driver;
 import cetus.hir.*;
 import cetus.transforms.TransformPass;
+import cetus.transforms.paw_tiling.TilingParams;
 import cetus.transforms.ReductionTransform;
 
 import java.util.*;
 
 /**
-* Whole program analysis that uses data-dependence information to 
-* internally annotate loops that are parallel
-*/
+ * Whole program analysis that uses data-dependence information to
+ * internally annotate loops that are parallel
+ */
 public class LoopParallelizationPass extends AnalysisPass {
 
     // The level of parallelization requested from this pass
@@ -33,14 +34,14 @@ public class LoopParallelizationPass extends AnalysisPass {
     private static final String pass_name = "[LoopParallelization]";
 
     /**
-    * Constructs a new parallelization pass with the specified program.
-    * @param program the program to be parallelized.
-    */
+     * Constructs a new parallelization pass with the specified program.
+     * 
+     * @param program the program to be parallelized.
+     */
     public LoopParallelizationPass(Program program) {
         super(program);
 
-        parallelization_level = Integer.valueOf
-            (Driver.getOptionValue("parallelize-loops")).intValue();
+        parallelization_level = Integer.valueOf(Driver.getOptionValue("parallelize-loops")).intValue();
         // adjust the number if "report" is requested.
         if (parallelization_level > 2) {
             parallelization_level -= 2;
@@ -52,26 +53,26 @@ public class LoopParallelizationPass extends AnalysisPass {
     }
 
     /**
-    * Get Pass name
-    */
+     * Get Pass name
+     */
     public String getPassName() {
         return pass_name;
     }
 
     /**
-    * Start whole program loop parallelization analysis.
-    */
+     * Start whole program loop parallelization analysis.
+     */
     public void start() {
         // Implemented nested or non-nested parallelism as per user request
         switch (parallelization_level) {
-        case PARALLELIZE_LOOP_NEST:
-            nested_parallelism = true;
-            parallelizeAllNests();
-            break;
-        case PARALLELIZE_DISABLE_NESTED:
-            nested_parallelism = false;
-            parallelizeAllNests();
-            break;
+            case PARALLELIZE_LOOP_NEST:
+                nested_parallelism = true;
+                parallelizeAllNests();
+                break;
+            case PARALLELIZE_DISABLE_NESTED:
+                nested_parallelism = false;
+                parallelizeAllNests();
+                break;
         }
         reportParallelization();
         // Invokes reduction transformation.
@@ -82,12 +83,12 @@ public class LoopParallelizationPass extends AnalysisPass {
     }
 
     /**
-    * Performs parallelization of the loop nests in the program.
-    */
-    public void parallelizeAllNests() {    
+     * Performs parallelization of the loop nests in the program.
+     */
+    public void parallelizeAllNests() {
         DFIterator<Loop> iter = new DFIterator<Loop>(program, Loop.class);
 
-        if (program.getDDGraph() == null){
+        if (program.getDDGraph() == null) {
             PrintTools.println("[AUTOPAR] Program DDG not available Parallelization STOPS", 0);
             return;
         }
@@ -98,26 +99,40 @@ public class LoopParallelizationPass extends AnalysisPass {
         }
     }
 
-    /**
-    * Inserts cetus annotation if the given loop is proven to be parallel.
-    */
-    private void addCetusAnnotation(Loop loop, boolean parallel) {
-        if (parallel &&
-            Driver.isIncluded("parallelize-loops",
-                    "Loop", LoopTools.getLoopName((Statement)loop))) {
-            CetusAnnotation note = new CetusAnnotation();
-            note.put("parallel", "true");
-            ((Annotatable)loop).annotate(note);
+    private void addCetusNumThreadsAnnotation(Loop loop) {
+        try {
+            int numOfProcessors = Integer.parseInt(Driver.getOptionValue(TilingParams.CORES_PARAM_NAME));
+
+            // CetusAnnotation numThreadsAnnot = new CetusAnnotation();
+            // numThreadsAnnot.put("num_threads", numOfProcessors);
+            // ((Annotatable) loop).annotate(numThreadsAnnot);
+
+        } catch (Exception e) {
+            PrintTools.printlnDebug("Error on setting num of processors. No value will be used");
         }
     }
 
     /**
-    * Check if a specific loop in the program is parallel, irrespective of the
-    * effects of parallelizing or serializing enclosing loops.
-    * @param loop the for loop to check parallelism for based only on
-    * dependence analysis
-    * @return true if it is parallel.
-    */
+     * Inserts cetus annotation if the given loop is proven to be parallel.
+     */
+    private void addCetusAnnotation(Loop loop, boolean parallel) {
+        if (parallel &&
+                Driver.isIncluded("parallelize-loops",
+                        "Loop", LoopTools.getLoopName((Statement) loop))) {
+            CetusAnnotation note = new CetusAnnotation();
+            note.put("parallel", "true");
+            ((Annotatable) loop).annotate(note);
+        }
+    }
+
+    /**
+     * Check if a specific loop in the program is parallel, irrespective of the
+     * effects of parallelizing or serializing enclosing loops.
+     * 
+     * @param loop the for loop to check parallelism for based only on
+     *             dependence analysis
+     * @return true if it is parallel.
+     */
     @Deprecated
     private boolean checkParallel(Loop loop) {
         boolean is_parallel = false;
@@ -131,26 +146,23 @@ public class LoopParallelizationPass extends AnalysisPass {
             if (nest_eligible == false)
                 break;
         }
-        if (nest_eligible==true) {
+        if (nest_eligible == true) {
             // Check if scalar dependences might exist
-            if(LoopTools.scalarDependencePossible(loop)==true)
-                is_parallel=false;
+            if (LoopTools.scalarDependencePossible(loop) == true)
+                is_parallel = false;
             // Check if early exit break statement might exist
-            else if (LoopTools.containsBreakStatement(loop)==true)
-                is_parallel=false;
+            else if (LoopTools.containsBreakStatement(loop) == true)
+                is_parallel = false;
             // check if array loop carried dependences exist
-            else if (pdg.checkLoopCarriedDependence(loop)==true) {
+            else if (pdg.checkLoopCarriedDependence(loop) == true) {
                 // Also check if loop carried dependences might be
                 // because of private or reduction or induction variables
                 loop_graph = pdg.getSubGraph(loop);
-                ArrayList<DDGraph.Arc> loop_carried_deps =
-                    loop_graph.getLoopCarriedDependencesForGraph();
+                ArrayList<DDGraph.Arc> loop_carried_deps = loop_graph.getLoopCarriedDependencesForGraph();
                 for (DDGraph.Arc dep : loop_carried_deps) {
                     if (dep.isCarried(loop)) {
-                        ArrayAccess dep_access =
-                            dep.getSource().getArrayAccess();
-                        Symbol dep_symbol =
-                            SymbolTools.getSymbolOf((Expression)dep_access);
+                        ArrayAccess dep_access = dep.getSource().getArrayAccess();
+                        Symbol dep_symbol = SymbolTools.getSymbolOf((Expression) dep_access);
                         // Check if loop carried dependence is for private
                         // variable
                         if (LoopTools.isPrivate(dep_symbol, loop))
@@ -159,49 +171,46 @@ public class LoopParallelizationPass extends AnalysisPass {
                         // variable
                         else if (LoopTools.isReduction(dep_symbol, loop))
                             is_parallel = true;
-                        //else if (LoopTools.isInductionVariable(dep_symbol, l))
-                        //    is_parallel = true;
+                        // else if (LoopTools.isInductionVariable(dep_symbol, l))
+                        // is_parallel = true;
                         else {
                             is_parallel = false;
                             break;
                         }
-                    }
-                    else
+                    } else
                         is_parallel = true;
                 }
             }
             // No scalar or array dependences
             else
-                is_parallel=true;
-        }
-        else
-            is_parallel=false;
+                is_parallel = true;
+        } else
+            is_parallel = false;
 
         return is_parallel;
     }
 
     /**
-    * Using dependence information, parallelize the entire loop nest covered by
-    * the enclosing loop. If an outer loop is found to be serial, serialize it
-    * and eliminate all loop carried dependences originating from it, this will
-    * in turn expose inner parallelism.
-    * @param enclosing_loop the loop which encloses the nest to be parallelized.
-    */
+     * Using dependence information, parallelize the entire loop nest covered by
+     * the enclosing loop. If an outer loop is found to be serial, serialize it
+     * and eliminate all loop carried dependences originating from it, this will
+     * in turn expose inner parallelism.
+     * 
+     * @param enclosing_loop the loop which encloses the nest to be parallelized.
+     */
     private void parallelizeLoopNest(Loop enclosing_loop) {
         boolean is_parallel;
-    
+
         DDGraph dependence_graph = program.getDDGraph();
 
-        List<Loop> eligible_loops = LoopTools.
-                extractOutermostDependenceTestEligibleLoops(enclosing_loop);
+        List<Loop> eligible_loops = LoopTools.extractOutermostDependenceTestEligibleLoops(enclosing_loop);
 
         for (int i = 0; i < eligible_loops.size(); i++) {
             Loop outer_loop = eligible_loops.get(i);
 
             DDGraph nest_ddgraph = dependence_graph.getSubGraph(outer_loop);
 
-            List<Loop> contained_nest = 
-                    LoopTools.calculateInnerLoopNest(outer_loop);
+            List<Loop> contained_nest = LoopTools.calculateInnerLoopNest(outer_loop);
 
             // Records loops that are already scheduled for parallelization.
             List<Loop> scheduled = new ArrayList<Loop>(contained_nest.size());
@@ -218,10 +227,10 @@ public class LoopParallelizationPass extends AnalysisPass {
                 }
                 // Does not analyze for parallelization if not necessary
                 if (has_scheduled_outer_loop && !needs_report &&
-                    !nested_parallelism) {
+                        !nested_parallelism) {
                     continue;
                 }
-               
+
                 is_parallel = true;
                 if (LoopTools.containsBreakStatement(l)) {
                     is_parallel = false;
@@ -230,10 +239,8 @@ public class LoopParallelizationPass extends AnalysisPass {
                         continue;
                     }
                 }
-                Set<Expression> scalar_deps =
-                        LoopTools.collectScalarDependences(l);
-                    
-            
+                Set<Expression> scalar_deps = LoopTools.collectScalarDependences(l);
+
                 if (!scalar_deps.isEmpty()) {
                     is_parallel = false;
                     addReport(l, "contains scalar dependences on {" +
@@ -250,18 +257,15 @@ public class LoopParallelizationPass extends AnalysisPass {
                     DependenceVector dv = row.getDependenceVector();
                     // If direction is loop carried
                     if (!dv.getDirectionVector().containsKey(l) ||
-                        dv.getDirection(l) == DependenceVector.equal ||
-                        dv.getDirection(l) == DependenceVector.nil) {
+                            dv.getDirection(l) == DependenceVector.equal ||
+                            dv.getDirection(l) == DependenceVector.nil) {
                         continue;
                     }
 
-                  
                     ArrayAccess src_access = row.getSource().getArrayAccess();
-                    Symbol src_symbol =
-                            SymbolTools.getSymbolOf((Expression)src_access);
+                    Symbol src_symbol = SymbolTools.getSymbolOf((Expression) src_access);
                     ArrayAccess sink_access = row.getSink().getArrayAccess();
-                    Symbol sink_symbol =
-                            SymbolTools.getSymbolOf((Expression)sink_access);
+                    Symbol sink_symbol = SymbolTools.getSymbolOf((Expression) sink_access);
                     // Check if loop carried dependence is for
                     // private variable or reduction variable.
                     // If not, must serialize this loop
@@ -270,8 +274,10 @@ public class LoopParallelizationPass extends AnalysisPass {
                     // which is not handled in both array privatization and
                     // reduction.
                     if (src_symbol == sink_symbol &&
-                        (LoopTools.isPrivate(src_symbol, l) ||
-                        LoopTools.isReduction(src_symbol, l))) {
+                            (LoopTools.isPrivate(src_symbol, l)
+                                    || (LoopTools.isPrivate(src_access, enclosing_loop))
+                                    || LoopTools.isReduction(src_symbol, l)
+                                    || (LoopTools.isReduction(src_access, enclosing_loop)))) {
                         serialize = false;
                     } else {
                         serialize = true;
@@ -279,14 +285,14 @@ public class LoopParallelizationPass extends AnalysisPass {
                     }
                     if (serialize) {
                         is_parallel = false;
-                    // Remove this dependence vector as serializing this loop
-                    // will remove covered dependences (this direction will be
-                    // < if the enclosing_loop passed into this loop is at the
-                    // outermost level in the program. If not, it might be a >
-                    // direction, but is assumed to be covered by an outer <
-                    // direction and hence, the dependence vector can be deleted
-                    // If the direction is any, there can be an equal direction
-                    // as well and hence the row should not be deleted
+                        // Remove this dependence vector as serializing this loop
+                        // will remove covered dependences (this direction will be
+                        // < if the enclosing_loop passed into this loop is at the
+                        // outermost level in the program. If not, it might be a >
+                        // direction, but is assumed to be covered by an outer <
+                        // direction and hence, the dependence vector can be deleted
+                        // If the direction is any, there can be an equal direction
+                        // as well and hence the row should not be deleted
                         if (dv.getDirection(l) != DependenceVector.any) {
                             all_arcs.remove(k--);
                         }
@@ -302,9 +308,10 @@ public class LoopParallelizationPass extends AnalysisPass {
 
                     if (nested_parallelism || !has_scheduled_outer_loop) {
                         addCetusAnnotation(l, true);
+                        addCetusNumThreadsAnnotation(l);
                         addReport(l, "is scheduled for parallelization");
                         scheduled.add(l);
-                    
+
                     }
                 } else {
                     addReport(l, "is serial");
@@ -315,8 +322,8 @@ public class LoopParallelizationPass extends AnalysisPass {
     }
 
     /**
-    * Adds a string entry in the report data structure.
-    */
+     * Adds a string entry in the report data structure.
+     */
     protected void addReport(Loop loop, String text) {
         List<String> loop_report = report.get(loop);
         if (loop_report == null) {
@@ -332,10 +339,9 @@ public class LoopParallelizationPass extends AnalysisPass {
         }
         StringBuilder sb = new StringBuilder(400);
         String tag = "[AUTOPAR] ";
-        //String sep = PrintTools.line_sep + tag + "     ";
+        // String sep = PrintTools.line_sep + tag + " ";
         String sep = "; ";
-        DFIterator<ForLoop> iter =
-                new DFIterator<ForLoop>(program, ForLoop.class);
+        DFIterator<ForLoop> iter = new DFIterator<ForLoop>(program, ForLoop.class);
         iter.pruneOn(VariableDeclaration.class);
         iter.pruneOn(ExpressionStatement.class);
         while (iter.hasNext()) {
@@ -365,60 +371,59 @@ public class LoopParallelizationPass extends AnalysisPass {
         System.out.println(sb + "");
     }
 
-  
     /**
-    * Prints summary of loop parallelization pass.
-    */
+     * Prints summary of loop parallelization pass.
+     */
     /*
-    private void reportParallelizationOld() {
-        if ( PrintTools.getVerbosity() < 1 ) 
-            return;
-        String tag = "[PARALLEL REPORT] ";
-        String separator = "";
-        for ( int i=0; i<80-tag.length(); i++ ) separator += ":";
-        StringBuilder legend = new StringBuilder(300);
-        legend.append(tag+separator+"\n");
-        legend.append(tag+"InputParallel: loop is parallel in the input program\n");
-        legend.append(tag+"CetusParallel: loop is auto-parallelized\n");
-        legend.append(tag+"NonCanonical : loop is not canonical\n");
-        legend.append(tag+"NonPerfect   : loop is not perfect nest\n");
-        legend.append(tag+"ControlFlow  : loop may exit prematually\n");
-        legend.append(tag+"SymbolicStep : loop step is symbolic\n");
-        legend.append(tag+"FunctionCall : loop contains function calls\n");
-        legend.append(tag+"I/O          : loop contains I/O calls\n");
-        legend.append(tag+separator+"\n");
-        System.out.print(legend);
-
-        String loop_name = "-";
-        boolean omp_found = false, cetus_parallel_found = false;
-
-        DepthFirstIterator iter = new DepthFirstIterator(program);
-        while ( iter.hasNext() )
-        {
-            Object o = iter.next();
-
-            if ( o instanceof ForLoop )
-            {
-                ForLoop for_loop = (ForLoop)o;
-                StringBuilder out = new StringBuilder(80);
-                out.append(LoopTools.getLoopName(for_loop));
-                if ( for_loop.containsAnnotation(OmpAnnotation.class, "for") )
-                    out.append(", InputParallel");
-                if ( for_loop.containsAnnotation(CetusAnnotation.class, "parallel") )
-                    out.append(", CetusParallel");
-                if ( !LoopTools.isCanonical(for_loop) )
-                    out.append(", NonCanonical");
-                if ( !LoopTools.isPerfectNest(for_loop) )
-                    out.append(", NonPerfect");
-                if ( LoopTools.containsControlFlowModifier(for_loop) )
-                    out.append(", ControlFlow");
-                if ( !LoopTools.isIncrementEligible(for_loop) )
-                    out.append(", SymbolicStep");
-                if ( IRTools.containsClass(for_loop, FunctionCall.class) )
-                    out.append(", FunctionCall");
-                System.out.println(tag+out);
-            }
-        }
-    }
-    */
+     * private void reportParallelizationOld() {
+     * if ( PrintTools.getVerbosity() < 1 )
+     * return;
+     * String tag = "[PARALLEL REPORT] ";
+     * String separator = "";
+     * for ( int i=0; i<80-tag.length(); i++ ) separator += ":";
+     * StringBuilder legend = new StringBuilder(300);
+     * legend.append(tag+separator+"\n");
+     * legend.append(tag+"InputParallel: loop is parallel in the input program\n");
+     * legend.append(tag+"CetusParallel: loop is auto-parallelized\n");
+     * legend.append(tag+"NonCanonical : loop is not canonical\n");
+     * legend.append(tag+"NonPerfect   : loop is not perfect nest\n");
+     * legend.append(tag+"ControlFlow  : loop may exit prematually\n");
+     * legend.append(tag+"SymbolicStep : loop step is symbolic\n");
+     * legend.append(tag+"FunctionCall : loop contains function calls\n");
+     * legend.append(tag+"I/O          : loop contains I/O calls\n");
+     * legend.append(tag+separator+"\n");
+     * System.out.print(legend);
+     * 
+     * String loop_name = "-";
+     * boolean omp_found = false, cetus_parallel_found = false;
+     * 
+     * DepthFirstIterator iter = new DepthFirstIterator(program);
+     * while ( iter.hasNext() )
+     * {
+     * Object o = iter.next();
+     * 
+     * if ( o instanceof ForLoop )
+     * {
+     * ForLoop for_loop = (ForLoop)o;
+     * StringBuilder out = new StringBuilder(80);
+     * out.append(LoopTools.getLoopName(for_loop));
+     * if ( for_loop.containsAnnotation(OmpAnnotation.class, "for") )
+     * out.append(", InputParallel");
+     * if ( for_loop.containsAnnotation(CetusAnnotation.class, "parallel") )
+     * out.append(", CetusParallel");
+     * if ( !LoopTools.isCanonical(for_loop) )
+     * out.append(", NonCanonical");
+     * if ( !LoopTools.isPerfectNest(for_loop) )
+     * out.append(", NonPerfect");
+     * if ( LoopTools.containsControlFlowModifier(for_loop) )
+     * out.append(", ControlFlow");
+     * if ( !LoopTools.isIncrementEligible(for_loop) )
+     * out.append(", SymbolicStep");
+     * if ( IRTools.containsClass(for_loop, FunctionCall.class) )
+     * out.append(", FunctionCall");
+     * System.out.println(tag+out);
+     * }
+     * }
+     * }
+     */
 }

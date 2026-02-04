@@ -1,110 +1,171 @@
-# The Cetus Project with Subscripted subscript analysis
+# The Cetus Project
 
-We have developed a new analysis technique for the automatic parallelization of subsripted
-subscript loops. The technique analyzes loops that define and/or modify the subscript array
-and determines array properties, which is sufficient to parallelize a class of subscripted
-subscripts. This repository contains the source codes of not just the actual technique but 
-also of the benchmarks used to to evaluate the capabilites of the technique. The
-technique has been described in detail in the listed publications below.
+Cetus is a source-to-source compiler framework originally developed at Purdue University and extended at the University of Delaware. This repository contains improvements and new analysis/optimization passes for automatic parallelization and loop transformations.
 
-## Prerequisities
-### Software
- - Linux (OS tested with : CentOS v7.4, Ubuntu v22.04)
- - GNU C Compiler (GCC) v4.8.5 and above
- - Python v3.8.0 and above
- - OpenMP v4.0 and above
- - gfortran
+## Table of Contents
 
-### Python packages required
+- [Context and Motivation](#context-and-motivation)
+- [Features and Recent Improvements](#features-and-recent-improvements)
+- [How to Build and Run Cetus](#how-to-build-and-run-cetus)
+- [Examples](#examples)
+- [Benchmarking](#benchmarking)
+- [Documentation and API Reference](#documentation-and-api-reference)
+  - [Feature Documentation](#feature-documentation)
+  - [Analysis Passes](#analysis-passes)
+  - [Transformation Passes](#transformation-passes)
+  - [Full API Documentation](#full-api-documentation)
 
-1. subprocess
-2. re
-3. os
+## Context and Motivation
 
-### Hardware
- - Machine with x86-64 processors (preferably Sky Lake and beyond)
- - ~4GB of disk space
- - Atleast 8GB of Memory
+Cetus provides infrastructure for analyzing and transforming C programs, with a focus on parallelization (OpenMP) and advanced loop transformations. This branch adds new analyses and transformations such as subscripted-subscript analysis and parallel-aware tiling, along with several core bug fixes and enhancements.
 
-# Downloading and Running Cetus (On this branch):
-```
-    1. Download Cetus through the "Download Code" (green button) above or through wget.
-    2. Unpack the Zip/Tar file and navigate to the main directory.
-    3. Run the build script through the command - ./build.sh bin
-    4. The Cetus executable is created in the bin directory
-    5. Copy and paste the Cetus executable in your working directory.
-    6. Run the Cetus executable to see the list of available options and how to enable them.
-    7. To compile a source code using Cetus through the command line type-
-          ./cetus [options] [C FILE]
-          E.g. ./cetus -parallelize-loops=2 foo.c
-    8. The output file after running Cetus is made available in the cetus_output folder
-            in your working directory.
-    9. Inside the resource directory, you can find example programs
-```
+## Features and Recent Improvements
 
-       
-# Subscripted subscript Analysis Pass
-1. Source Code:
-    The source code of the pass can be found in-
-    ```
-      /src/cetus/analysis/SubscriptedSubscriptAnalysis.java
-    ```
-2. Enabling and testing the pass:
-    To enable subscripted subscript analysis on an input code simply type:
-    ```
-         ./cetus -subsub_analysis -normalize-loops foo.c
-     ```
+1. **Handling of loop index initializations within `for` loop declarations**  
+   When `for` loops are declared as `for (int i = 0; i < n; i++)`, earlier Cetus would remove the initialization of `i` from its place and hoist it to the top of the code block, following the design principle that all variable declarations appear at the top of the block. A loop cannot be parallelized without knowing the initial value of the loop index. Now, instead of a loop header of the form `for ( ; i < n; i++)`, we keep `for (i = 0; i < n; i++)` and `int i` appears at the top of the block.
 
-# Integration Testing
-Examples for testing the subscripted subscript analysis pass have been placed in the
-directory "subsub_egs" within "integration_test".
+2. **Support for logical and bitwise scalar reductions**  
+   Scalar reductions of the form `x = x op expr`, where `op` is any of logical AND (`&&`), logical OR (`||`), bitwise OR (`|`), bitwise AND (`&`), or bitwise XOR (`^`) are now supported. Bitwise assignment operators of the form `&=`, `|=`, and `^=` are also recognized.
 
-### Running the integration tests
-   Run the python script - SubSub_integration_test.py using the command:
+3. **Support for min and max reductions**  
+   OpenMP added the reduction-identifiers `min` and `max` to the reduction clause starting from OpenMP 3.1. Cetus can now recognize min and max reductions implemented using the conditional operator (`? :`), subject to some expression restrictions.
+
+4. **Support for multiple reductions using different operators**  
+   Cetus previously had no issue recognizing multiple unique reduction statements within the same loop, but it could not create a separate reduction clause for each reduction-identifier within the same directive according to the latest OpenMP specification. Support for this has now been added, so a directive such as `#pragma omp parallel for private(i) reduction(max: maxl) reduction(&: b)` is handled correctly instead of trying to combine all identifiers and operators into one clause.
+
+5. **Loop interchange pass improvements**  
+   - Fixed minor bugs in the loop interchange legality algorithm.  
+   - Added reusability analysis to determine the best order of loops in a nest for maximizing cache-line reuse (based on K. S. McKinley’s paper “Optimizing for Parallelism and Data Locality”).  
+   - The pass can handle symbolic loop bounds.
+
+## How to Build and Run Cetus
+
+1. Download Cetus through the “Download Code” (green button) above or using `wget`.
+2. Unpack the ZIP/TAR file and navigate to the main directory.
+3. Run the build script:  
+   ```bash
+   ./build.sh bin
    ```
-   python3 SubSub_integration_test.py
+4. The Cetus executable is created in the `bin` directory.
+5. Copy the `cetus` executable into your working directory (or add `bin` to your `PATH`).
+6. Run the `cetus` executable with no arguments to see the list of available options and how to enable them.
+7. To compile a source code using Cetus from the command line, type:  
+   ```bash
+   ./cetus [options] [C_FILE]
+   # Example:
+   ./cetus -parallelize-loops=2 foo.c
    ```
-   The script takes user input and can perform testing on either one or all the test files.
+8. The output file after running Cetus is written to the `cetus_output` folder in your working directory.
+9. Inside the `resource` directory, you can find example programs.
 
-# Benchmarks for evaluating the technique
-  The benchmarks for evaluation have been placed in the "Evaluation_Benchmarks" directory.
-  Following benchmarks have been included:
-  
-| Code  | Source | Original Source link | 
-| ------------- | ------------- | ------------- |
-| amgmk-v1.0  | CORAL Benchmark Codes | (https://asc.llnl.gov/coral-benchmarks)
-| UA-NPB-1.0.3 | NAS Parallel Benchmarks | (https://github.com/akshay9594/SNU_NPB-1.0.3)  
-| CHOLMOD | SuiteSparse | (https://github.com/DrTimothyAldenDavis/SuiteSparse)
-| SDDMM (C version) | Published Paper | (https://github.com/isratnisa/SDDMM_GPU)
+## Examples
 
-### Running Subscripted Subscript Analysis on the benchmarks
+- **Basic parallelization example**  
+  See the command-line example above: `./cetus -parallelize-loops=2 foo.c`.
 
-A python script by the name *run-cetus.py* has been provided within each benchmark source
-code. Build Cetus first and then execute the script *run-cetus.py* to get the Cetus
-parallel version of the codes with subscripted subscript analysis:
+- **Feature-specific examples**  
+  - Subscripted-subscript analysis examples and benchmarks are described in `docs/SubscriptedSubscriptAnalysis.md`.  
+  - Parallel-aware tiling examples and benchmarks are described in `docs/Parallel-Aware-Tiling.md`.
 
-  ```
-  $ python3 run-cetus.py
-  ```
-  The translated files will be available in the *cetus_output* directory.
+## Benchmarking
 
-Note:
-1. For the CHOLMOD (SuiteSparse) benchmark, only the file *cholmod_super_numeric.c*
-is translated. This is due to the sheer number of dependencies present in this benchmark.
-*cholmod_super_numeric.c* contains the actual supernodal cholesky factorization computation.
+This repository includes benchmark setups for evaluating new analyses and transformations:
 
-2. Use the Makefiles provided within each benchmark to compile and execute the codes. The
-Makefiles need to be modified to compile the Cetus translated version of the source codes.
-Refer to the publications below or the provided links above for more details on how to 
-execute the codes.
+- **Subscripted subscript analysis**: Benchmarks and scripts are documented in `docs/SubscriptedSubscriptAnalysis.md`.  
+- **Parallel-aware tiling (PAW Tiling)**: Benchmark-oriented command lines (NAS Parallel Benchmarks, PolyBench, and others) are documented in `docs/Parallel-Aware-Tiling.md`.
 
-# Related publications:
-1. Akshay Bhosale and Rudolf Eigenmann. 2021. On the automatic parallelization of subscripted 
-   subscript patterns using array property analysis. In Proceedings of the ACM International 
-   Conference on Supercomputing (ICS '21). Association for Computing Machinery, New York, NY, 
-   USA, 392–403. (https://doi.org/10.1145/3447818.3460424)
+Refer to those documents for detailed instructions, datasets, and interpretation guidelines.
 
+## Documentation and API Reference
 
-    
-  
-            
+### Feature Documentation
+
+- `docs/SubscriptedSubscriptAnalysis.md` – Subscripted subscript analysis pass  
+- `docs/Parallel-Aware-Tiling.md` – Parallel-aware tiling (PAW Tiling) pass
+
+### Analysis Passes
+
+The following analysis passes are available in Cetus. See the [Javadoc API](api/index.html) for detailed documentation:
+
+#### Loop Analysis
+- [`LoopParallelizationPass`](api/cetus/analysis/LoopParallelizationPass.html) – Identifies and marks parallelizable loops
+- [`LoopAnalysisPass`](api/cetus/analysis/LoopAnalysisPass.html) – Base class for loop analysis passes
+- [`LoopInfo`](api/cetus/analysis/LoopInfo.html) – Loop information and metadata
+- [`LoopTools`](api/cetus/analysis/LoopTools.html) – Utility functions for loop analysis
+- [`SubscriptedSubscriptAnalysis`](api/cetus/analysis/SubscriptedSubscriptAnalysis.html) – Analysis for subscripted subscript patterns
+
+#### Data Dependence Analysis
+- [`DDTDriver`](api/cetus/analysis/DDTDriver.html) – Data dependence testing driver
+- [`DDTest`](api/cetus/analysis/DDTest.html) – Interface for dependence testing algorithms
+- [`BanerjeeTest`](api/cetus/analysis/BanerjeeTest.html) – Banerjee dependence test
+- [`OmegaTest`](api/cetus/analysis/OmegaTest.html) – Omega test for dependence analysis
+- [`RangeTest`](api/cetus/analysis/RangeTest.html) – Range-based dependence test
+- [`DependenceVector`](api/cetus/analysis/DependenceVector.html) – Dependence vector representation
+- [`DDGraph`](api/cetus/analysis/DDGraph.html) – Dependence graph data structure
+
+#### Array and Memory Analysis
+- [`ArrayPrivatization`](api/cetus/analysis/ArrayPrivatization.html) – Array privatization analysis
+- [`ArrayParameterAnalysis`](api/cetus/analysis/ArrayParameterAnalysis.html) – Array parameter analysis
+- [`AliasAnalysis`](api/cetus/analysis/AliasAnalysis.html) – Alias analysis for pointers
+- [`PointsToAnalysis`](api/cetus/analysis/PointsToAnalysis.html) – Points-to analysis
+- [`IPPointsToAnalysis`](api/cetus/analysis/IPPointsToAnalysis.html) – Interprocedural points-to analysis
+
+#### Range and Value Analysis
+- [`RangeAnalysis`](api/cetus/analysis/RangeAnalysis.html) – Range analysis for variables
+- [`IPRangeAnalysis`](api/cetus/analysis/IPRangeAnalysis.html) – Interprocedural range analysis
+- [`RangeDomain`](api/cetus/analysis/RangeDomain.html) – Range domain representation
+
+#### Reduction Analysis
+- [`Reduction`](api/cetus/analysis/Reduction.html) – Reduction variable analysis
+
+#### Interprocedural Analysis
+- [`IPAnalysis`](api/cetus/analysis/IPAnalysis.html) – Base class for interprocedural analyses
+- [`IPAGraph`](api/cetus/analysis/IPAGraph.html) – Interprocedural analysis graph
+- [`CallGraph`](api/cetus/analysis/CallGraph.html) – Call graph representation
+- [`MayMod`](api/cetus/analysis/MayMod.html) – May-modify analysis
+
+#### Other Analysis Passes
+- [`InlineExpansion`](api/cetus/analysis/InlineExpansion.html) – Inline expansion analysis
+- [`ControlFlowGraph`](api/cetus/analysis/ControlFlowGraph.html) – Control flow graph construction
+- [`CFGraph`](api/cetus/analysis/CFGraph.html) – Control flow graph representation
+- [`DataFlow`](api/cetus/analysis/DataFlow.html) – Data flow analysis framework
+- [`Cache`](api/cetus/analysis/Cache.html) – Cache analysis utilities
+- [`ReuseVectorAnalysis`](api/cetus/analysis/ReuseVectorAnalysis.html) – Reuse vector analysis
+
+### Transformation Passes
+
+The following transformation passes are available in Cetus:
+
+#### Loop Transformations
+- [`LoopTiling`](api/cetus/transforms/LoopTiling.html) – Loop tiling transformation
+- [`LoopInterchange`](api/cetus/transforms/LoopInterchange.html) – Loop interchange transformation
+- [`LoopNormalization`](api/cetus/transforms/LoopNormalization.html) – Loop normalization pass
+- [`LoopProfiler`](api/cetus/transforms/LoopProfiler.html) – Loop profiling instrumentation
+- [`LoopTransformPass`](api/cetus/transforms/LoopTransformPass.html) – Base class for loop transformations
+
+#### Reduction Transformations
+- [`ReductionTransform`](api/cetus/transforms/ReductionTransform.html) – Reduction variable transformation
+
+#### Code Generation and Optimization
+- [`InlineExpansionPass`](api/cetus/transforms/InlineExpansionPass.html) – Inline expansion transformation
+- [`IVSubstitution`](api/cetus/transforms/IVSubstitution.html) – Induction variable substitution
+- [`BranchEliminator`](api/cetus/transforms/BranchEliminator.html) – Branch elimination optimization
+
+#### Code Normalization
+- [`NormalizeReturn`](api/cetus/transforms/NormalizeReturn.html) – Return statement normalization
+- [`SingleCall`](api/cetus/transforms/SingleCall.html) – Single call transformation
+- [`SingleReturn`](api/cetus/transforms/SingleReturn.html) – Single return transformation
+- [`SingleDeclarator`](api/cetus/transforms/SingleDeclarator.html) – Single declarator transformation
+- [`RemoveUselessSpecifiers`](api/cetus/transforms/RemoveUselessSpecifiers.html) – Remove useless specifiers
+
+#### Other Transformations
+- [`AnnotationParser`](api/cetus/transforms/AnnotationParser.html) – Annotation parsing
+- [`EventTimer`](api/cetus/transforms/EventTimer.html) – Event timing instrumentation
+- [`ProcedureTransformPass`](api/cetus/transforms/ProcedureTransformPass.html) – Base class for procedure transformations
+- [`TransformPass`](api/cetus/transforms/TransformPass.html) – Base class for all transformation passes
+
+### Full API Documentation
+
+- **Javadoc API Index**: [`api/index.html`](api/index.html) – Complete API documentation with search and navigation
+
+Open `api/index.html` in a browser to explore the full API, search for classes, and navigate through packages.

@@ -73,6 +73,7 @@ public class DDTDriver extends AnalysisPass {
 
         List<Loop> eligible_loops =
                 LoopTools.extractOutermostDependenceTestEligibleLoops(program);
+                
         PrintTools.printlnStatus(1, pass_name,
                 "Number of eligible outermost loops =", eligible_loops.size());
      

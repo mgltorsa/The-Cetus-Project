@@ -1,0 +1,130 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "inputs": [
+        {
+            "id": "PolyBenchmarkName",
+            "type": "pickString",
+            "description": "Select benchmark type",
+            "options": ["linear-algebra/blas", "linear-algebra/kernels", "linear-algebra/solver", "stencils", "medley"]
+        },
+        {
+            "id": "PolyRoutineName",
+            "type": "pickString",
+            "description": "Select routine",
+            "options": ["2mm", "3mm", "gemm", "cholesky", "lu", "floyd-warshall", "heat-3d", "jacobi-2d"],
+        },
+        {
+            "id": "NPBbenchmarkName",
+            "type": "pickString",
+            "description": "Select benchmark",
+            "options": ["BT", "SP", "MG", "LU"]
+        },
+        {
+            "id": "NPBRoutineName",
+            "type": "pickString",
+            "description": "Select routine",
+            "options": ["x_solve_b", "rhs_b", "y_solve_b", "exact_rhs_b", "mg_rprj3", "mg_resid", "pintgr_b"]
+        },
+        {
+            "id": "TilingSelectionAlgorithm",
+            "type": "pickString",
+            "description": "Select tiling selection algorithm",
+            "options": ["selection=LRW", "selection=NT", "tileSizes=16", "tileSizes=32", "tileSizes=64", "tileSizes=128"]
+        },
+        {
+            "id": "CetusExamples",
+            "type": "pickString",
+            "description": "Select Cetus example",
+            "options": ["ArrayPriv", "ArrayRed", "fixedpoint", "fractales", "induction", "Jacobi", "LoopInterchange", "MinMaxRed", "ScalarPriv", "ScalarRed", "SimpleLoop","TooSmall", "UnknownSize"]
+        }
+  
+    ],
+    
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Cetus examples - Alias=3",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=2 -profitable-omp=0 -tile-profitability=0 -cores=4 -cacheLine=64 -cacheSize=46080 -selection=LRW -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/examples/${input:CetusExamples}.c",
+            "console": "integratedTerminal",
+        },
+        {
+            "type": "java",
+            "name": "Cetus examples - NoAlias",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-verbosity=1 -cores=4 -cacheLine=64 -cacheSize=46080 -selection=LRW -paw_tiling /mnt/d/workspace/java/cetus/The-Cetus-Project/resources/examples/${input:CetusExamples}.c",
+            "console": "integratedTerminal",
+        },
+        {
+            "type": "java",
+            "name": "NAS Benchmarks - Parallel Tiling",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=1 -profitable-omp=0 -tile-profitability=0 -cores=4 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}/${input:NPBRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/common:/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}"
+            }
+        },
+        {
+            "type": "java",
+            "name": "NAS Benchmarks - Serial Tiling",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -ompGen=0 -cores=4 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}/${input:NPBRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/common:/mnt/d/workspace/ud-masters/benchmarks/NPB3.3-SER-C-tiling/${input:NPBbenchmarkName}"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Polybench Benchmarks - Parallel Tiling",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -cores=4 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}//${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Polybench Benchmarks - Serial Tiling",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -profitable-omp=0 -tile-profitability=0 -cores=4 -ompGen=0 -cacheLine=64 -cacheSize=46080 -${input:TilingSelectionAlgorithm} -paw_tiling /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}/${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Polybench Benchmarks - Cetus",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}/${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
+        },
+        {
+            "type": "java",
+            "name": "Polybench Benchmarks - Cetus Reuse Vector Analysis",
+            "request": "launch",
+            "mainClass": "cetus.exec.Driver",
+            "args": "-alias=3 -verbosity=0 -reuse-vector-analysis /mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}/${input:PolyRoutineName}.c",
+            "console": "integratedTerminal",
+            "env": {
+                "CPATH": "/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/utilities:/mnt/d/workspace/ud-masters/benchmarks/modified-Polybench-4.2-tiling/${input:PolyBenchmarkName}/${input:PolyRoutineName}"
+            }
+        }
+    ],
+}

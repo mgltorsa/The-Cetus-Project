@@ -1742,7 +1742,7 @@ public class RangeDomain implements Cloneable, Domain {
                             bound.add((Expression)oo);
                         }
                     } else {
-                        bound.add(expr);
+                        bound.add(expr.clone());
                     }
                 }
             }
