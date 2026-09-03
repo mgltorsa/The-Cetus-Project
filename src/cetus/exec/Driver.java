@@ -355,6 +355,10 @@ public class Driver {
                 "loop_interchange",
                 "Exchanges the order of two iteration variables used by a nested loop");
 
+        options.add(options.ANALYSIS,
+                "subsub_analysis",
+                "Performs subscripted subscript analysis on the program");
+
         options.add(options.TRANSFORM,
                 ParallelAwareTiling.PASS_NAME,
                 null,
@@ -888,6 +892,9 @@ public class Driver {
 
         if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
             AnalysisPass.run(new ArrayPrivatization(program));
+        }
+        if (getOptionValue("subsub_analysis") != null) {
+            AnalysisPass.run(new SubscriptedSubscriptAnalysis(program));
         }
 
         if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
