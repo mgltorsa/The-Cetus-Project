@@ -89,7 +89,37 @@ cetus [options] -paw_tiling input_file.c
 **Analysis Options**:
 ```bash
 -tile-profitability=N        # Enable/disable profitability analysis (default: 1)
+-tilingLevel=N               # Tiling depth d: max loops strip-mined per nest,
+                             # browsed in decreasing-reuse order (0 = full depth)
 -verbosity=N                # Output verbosity level (0-4)
+```
+
+**PAPI Instrumentation** (post-tiling measurement pass):
+```bash
+-papi_instrument=1           # Regions + main: wall time and PAPI (R1)
+-papi-events=EV1,EV2         # Events to measure (default: PAPI_L3_DCM,PAPI_TOT_CYC)
+```
+Regions (outermost): procedures named `kernel_*` first (so baseline and
+tiled share `kernel_3mm#0` / `kernel_syrk#0`); `init_array` /
+`print_array` are never regions. Else `c_paw_tiling` (non-setup); else
+`c_paw_measure` / `#pragma omp parallel for`; else PAPI around `main`.
+The program line prints wall time for `main` plus **summed** region
+counters (no overlapping PAPI sets — R1). If there are **zero regions**,
+the program wrap itself runs PAPI around `main` so baselines still get
+hardware counters.
+
+Stderr:
+```
+[cetus-papi] kernel_3mm#1 TIME_NS=<n> PAPI_L3_DCM=<n> PAPI_TOT_CYC=<n>
+[cetus-papi] program TIME_NS=<n> PAPI_L3_DCM=<n> PAPI_TOT_CYC=<n>
+```
+Compile with `-lpapi` (or `-I resources/paw_tests/papi_stub` without libpapi).
+
+### Testing
+
+```bash
+./run-paw-tests.sh           # build + 20 JUnit tests + end-to-end kernels,
+                             # with and without PAPI instrumentation
 ```
 
 ### Integration with Other Passes

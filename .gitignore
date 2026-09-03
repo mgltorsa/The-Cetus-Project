@@ -5,3 +5,4 @@ class
 resources/pcaot
 deploy.sh
 lib
+paw_test_output/
