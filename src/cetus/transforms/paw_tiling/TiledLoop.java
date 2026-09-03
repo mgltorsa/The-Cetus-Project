@@ -238,8 +238,9 @@ public class TiledLoop extends ForLoop {
         clon.calculateOutermostParallelLoop();
 
         ForLoop parallelLoop = clon.getOutermostParallelizableLoop();
-        ForLoop actualParLoop = lookupLoop(parallelLoop, clon);
-        clon.outermostParallelizableLoop = actualParLoop;
+        if (parallelLoop != null) {
+            clon.outermostParallelizableLoop = lookupLoop(parallelLoop, clon);
+        }
 
         return clon;
     }

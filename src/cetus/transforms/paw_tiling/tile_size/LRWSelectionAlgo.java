@@ -1,186 +1,184 @@
 package cetus.transforms.paw_tiling.tile_size;
 
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import cetus.analysis.LoopTools;
 import cetus.hir.ArrayAccess;
-import cetus.hir.DFIterator;
+import cetus.hir.ArraySpecifier;
+import cetus.hir.Declaration;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
+import cetus.hir.IDExpression;
 import cetus.hir.IntegerLiteral;
+import cetus.hir.PrintTools;
 import cetus.hir.SymbolTable;
-import cetus.utils.ArrayUtils;
+import cetus.hir.Traversable;
+import cetus.hir.VariableDeclarator;
+import cetus.transforms.paw_tiling.analysis.ReuseOrderAnalyzer;
 import cetus.utils.VariableDeclarationUtils;
 
+/**
+ * Lam-Rothberg-Wolf tile-size selection: FindB computes the critical
+ * blocking factor B0, the largest square block of an N-wide row-major array
+ * that suffers no self-interference in a direct-mapped cache of C elements
+ * (thesis Algorithm 3.2, after Lam et al. ASPLOS'91). On set-associative
+ * caches B0 is used unchanged: safe but conservative (a=1 is the worst
+ * case). When N is not statically known, falls back to the NT square tile.
+ *
+ * Fidelity: this implementation follows the original paper (and the
+ * corrected thesis Algorithm 3.2): {@code di = addr div N; dj = addr mod
+ * N; if dj > N/2 then di += 1; dj = N - dj}. The nearest-row adjustment
+ * is essential: an earlier thesis transcription used
+ * {@code dj = |addr mod N - N|}, which mis-handles conflicts at exact row
+ * multiples (e.g. N=1024, C=4096 would return 1024 even though rows
+ * collide every 4 rows); the thesis was corrected on 2026-08-11 to the
+ * form implemented here, which yields the small, correct B0 in the
+ * power-of-two case.
+ */
 public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
 
-    private static final int DEFAULT_DATA_SIZE = 10000 * 10000;
-    private static final int DEFAULT_TILE_SIZE = 32;
+    private final long cacheSizeInBytes;
+    private final int cacheLineSizeInBytes;
+    private final int cores;
 
-    private long cacheSizeInBits;
-    private int cacheLineSizeInBits;
-
-    public LRWSelectionAlgo(long cacheSizeInKiB, int cacheLineSizeInBytes) {
-        super();
-        this.cacheSizeInBits = cacheSizeInKiB * 1024 * 8; // convert to bits
-        this.cacheLineSizeInBits = cacheLineSizeInBytes * 8; // convert to bits
+    public LRWSelectionAlgo(long cacheSizeInKiB, int cacheLineSizeInBytes, int cores) {
+        this.cacheSizeInBytes = cacheSizeInKiB * 1024;
+        this.cacheLineSizeInBytes = cacheLineSizeInBytes;
+        this.cores = cores;
     }
 
     /**
-     * THis methods implements the algorithm to compute the largest square block
-     * without self interference
-     * From Monica S. Lam, Edward Rothberg, and Michael E. Wolf. The cache
-     * performance and optimizations of blocked algorithms.
+     * FindB: critical blocking factor B0 for array width N (elements) and
+     * cache capacity C (elements). O(N/sqrt(C)) iterations.
      */
-    @Override
-    public Map<Expression, Expression> getTileSizes(ForLoop loopNest) {
-        DFIterator<ArrayAccess> arrayAccessesIter = new DFIterator<>(loopNest, ArrayAccess.class);
-        List<ArrayAccess> arrayAccesses = new ArrayList<>();
-        while (arrayAccessesIter.hasNext()) {
-            arrayAccesses.add(arrayAccessesIter.next());
+    public static long findB(long n, long c) {
+        if (n <= 0 || c <= 0) {
+            return 1;
         }
-        int numberOfAccesses = arrayAccesses.size();
-
-        if (numberOfAccesses == 0) {
-            return computeDefaultTileSizes(loopNest);
+        if (n * n <= c) {
+            return n; // whole array fits: no self-interference possible
         }
-
-        Map<Expression, Expression> possibleTileSizes = new HashMap<>();
-        int initialAddress = 0;
-
-        for (ArrayAccess access : arrayAccesses) {
-            // Compute the last cache line touched by the access.
-            // The array holds arraySize elements; each cache line holds elementsPerLine
-            // elements.
-            // Thus, the last accessed cache line is given by:
-
-            long largestBlockSize = findLargestSquareBlock(initialAddress, numberOfAccesses, cacheSizeInBits, loopNest,
-                    access);
-
-            initialAddress = getLastAddress(initialAddress, loopNest, access);
-
-            for (Expression indexVar : access.getIndices()) {
-                Long oldBlock = Long.MAX_VALUE;
-
-                if (possibleTileSizes.containsKey(indexVar)) {
-                    oldBlock = largestBlockSize;
-                }
-                long largestBlock = Math.min(oldBlock, largestBlockSize);
-                if (largestBlock <= 1) {
-                    continue;
-                }
-                possibleTileSizes.put(indexVar, new IntegerLiteral(largestBlock));
+        long maxWidth = Math.min(n, c);
+        long addr = 0;
+        while (true) {
+            addr += c;
+            long di = addr / n;
+            long dj = addr % n;
+            if (dj > n / 2) { // nearest-row adjustment (original paper)
+                di += 1;
+                dj = n - dj;
             }
+            if (di > Math.min(maxWidth, dj)) {
+                return Math.max(1, Math.min(maxWidth, di));
+            }
+            maxWidth = Math.min(maxWidth, dj == 0 ? 1 : dj);
         }
-
-        return possibleTileSizes;
     }
 
-    private Map<Expression, Expression> computeDefaultTileSizes(ForLoop loopNest) {
-        HashMap<Expression, Expression> possibleTileSizes = new HashMap<>();
-        DFIterator<ForLoop> loopIter = new DFIterator<>(loopNest, ForLoop.class);
-        while (loopIter.hasNext()) {
-            ForLoop loop = loopIter.next();
+    @Override
+    public Map<Expression, Expression> getTileSizes(ForLoop loopNest,
+            List<ForLoop> browseOrder) {
+        Map<Expression, Expression> sizes = new LinkedHashMap<>();
+        if (browseOrder.isEmpty()) {
+            return sizes;
+        }
+
+        int elemBytes = NTSelectionAlgo.elementBytes(loopNest);
+        long cacheElems = cacheSizeInBytes / elemBytes;
+        int lineElems = Math.max(cacheLineSizeInBytes / elemBytes, 1);
+
+        long n = residentLeadingDimension(loopNest);
+        if (n <= 0) {
+            PrintTools.printlnDebug(
+                    "[LRW] leading dimension unknown; falling back to NT");
+            return new NTSelectionAlgo(cacheSizeInBytes / 1024,
+                    cacheLineSizeInBytes, cores)
+                    .getTileSizes(loopNest, browseOrder);
+        }
+
+        long b0 = findB(n, cacheElems);
+        if (cores > 1) {
+            long refs = Math.max(1L, ReuseOrderAnalyzer.referenceGroups(loopNest).size());
+            long shared = sharedL3SquareCap(cacheElems, cores, refs, n);
+            if (shared > 1 && shared < b0) {
+                PrintTools.printlnDebug("[LRW] cap B0=" + b0 + " to shared-L3 "
+                        + shared + " (cores=" + cores + ", refs=" + refs + ")");
+                b0 = shared;
+            }
+        }
+        long aligned = BalancedTileCalculator.alignDown(b0, lineElems);
+        if (aligned <= 1) {
+            aligned = Math.max(b0, 1); // keep small unaligned blocks
+        }
+        if (aligned <= 1) {
+            PrintTools.printlnDebug("[LRW] degenerate B0; not tiling");
+            return sizes;
+        }
+        for (ForLoop loop : browseOrder) {
             Expression indexVar = LoopTools.getIndexVariable(loop);
             if (indexVar != null) {
-                possibleTileSizes.put(indexVar, new IntegerLiteral(DEFAULT_TILE_SIZE));
+                sizes.put(indexVar, new IntegerLiteral(aligned));
             }
         }
-        return possibleTileSizes;
+        return sizes;
     }
 
-    private int getLastAddress(int initialAddress, ForLoop loop, ArrayAccess access) {
-        // Each matrix element is 8 bytes, so number of elements per cache line is:
-        SymbolTable symbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent());
-
-        int elementSize = ArrayUtils.getTypeSizeInBits(access);
-        int elementsPerLine = cacheLineSizeInBits / elementSize;
-
-        Expression arraySizeExpr = ArrayUtils.getArraySize(symbolTable, access);
-        long arraySize = DEFAULT_DATA_SIZE;
-
-        if (arraySizeExpr == null || !(arraySizeExpr instanceof IntegerLiteral)) {
-            try {
-                arraySize = ArrayUtils.getArraySizeFromBounds(loop, access);
-            } catch (Exception e) {
-                arraySize = DEFAULT_DATA_SIZE;
-            }
-        } else {
-            arraySize = ((IntegerLiteral) arraySizeExpr).getValue();
+    /** Leading (last, row-major) dimension in elements of the resident
+     * reference's array, or -1 when not a compile-time literal. */
+    static long residentLeadingDimension(ForLoop nest) {
+        ArrayAccess resident = ReuseOrderAnalyzer.residentReference(nest);
+        if (resident == null) {
+            return -1;
         }
-
-        // Compute the last cache line touched by the access.
-        // The array holds arraySize elements; each cache line holds elementsPerLine
-        // elements.
-        // Thus, the last accessed cache line is given by:
-        int lastAddress = initialAddress + (int) ((arraySize - 1) / elementsPerLine);
-        return lastAddress;
-
+        SymbolTable symbols = VariableDeclarationUtils
+                .getVariableDeclarationSpace(nest.getParent());
+        try {
+            Expression arrayName = resident.getArrayName();
+            if (!(arrayName instanceof IDExpression)) {
+                return -1;
+            }
+            Declaration declaration = symbols.findSymbol((IDExpression) arrayName);
+            if (declaration == null) {
+                return -1;
+            }
+            for (Traversable childObj : declaration.getChildren()) {
+                if (!(childObj instanceof VariableDeclarator)) {
+                    continue;
+                }
+                VariableDeclarator child = (VariableDeclarator) childObj;
+                if (!child.getSymbolName().equals(arrayName.toString())) {
+                    continue;
+                }
+                @SuppressWarnings("unchecked")
+                List<ArraySpecifier> specs = child.getArraySpecifiers();
+                for (ArraySpecifier spec : specs) {
+                    int dims = spec.getNumDimensions();
+                    if (dims == 0) {
+                        continue;
+                    }
+                    Expression last = spec.getDimension(dims - 1);
+                    long folded = LiteralExpr.asPositiveLiteral(last);
+                    if (folded > 0) {
+                        return folded;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            PrintTools.printlnDebug("[LRW] dimension lookup failed: " + e);
+        }
+        return -1;
     }
 
     /**
-     * Returns the largest square block size (i.e. the edge length, in elements)
-     * that can be used to multiply matrices without causing self interference
-     * in caches. The idea is to choose block dimension b such that the working set
-     * (the data for all three matrices) fits in the cache.
-     *
-     * The typical constraint is:
-     * #blocks * b * b * elementSize <= cacheSize.
-     *
-     * Here allMatricesSize is taken as the total size (in bytes) of one
-     * matrix (or equivalently, if the total size is given for three matrices,
-     * one should divide by 3 or #blocks).
-     * *
-     * 
-     * @param allMatricesSize the size (in bytes) of one full matrix (for current
-     *                        implementation we assume matrices are contiguous)
-     * @param cacheSizeInBits the size (in bytes) of the target cache (e.g. L3
-     *                        cache)
-     *
-     * @return the block dimension (number of elements on each side)
+     * Largest square tile that still satisfies the NT shared-L3 inequality
+     * {@code B·B + Cores·Refs ≤ CacheElems}. Used to stop FindB from returning
+     * the full array width when one copy fits but P threads would not.
      */
-    private long findLargestSquareBlock(int initialAddress, int numberOfAccesses, long cacheSizeInBits, ForLoop loop,
-            ArrayAccess access) {
-        // assume each matrix element is 8 bytes (double precision)
-        long elementSizeInBits = ArrayUtils.getTypeSizeInBits(access);
-
-        // Compute maximum block dimension allowed by the cache:
-        // block * b * b * elementSize <= cacheSize ==> b <= sqrt(cacheSize/(3*elementSize))
-        long maxBlockForCache = (long) Math
-                .floor(Math.sqrt((double) cacheSizeInBits / (numberOfAccesses * elementSizeInBits)));
-
-        // Determine the number of elements in the matrix via the ArrayAccess.
-        // We use the loop's symbol table to try to retrieve a declared size.
-        SymbolTable symbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent());
-        Expression arraySizeExpr = ArrayUtils.getArraySize(symbolTable, access);
-        long numElements;
-        if (arraySizeExpr == null || !(arraySizeExpr instanceof IntegerLiteral)) {
-            try {
-                numElements = ArrayUtils.getArraySizeFromBounds(loop, access);
-            } catch (Exception e) {
-                numElements = DEFAULT_DATA_SIZE;
-            }
-        } else {
-            numElements = ((IntegerLiteral) arraySizeExpr).getValue();
-        }
-
-        // The full matrix requires numElements elements; its (estimated) dimension is:
-        long matrixDimension = (long) Math.floor(Math.sqrt(numElements));
-
-        // We cannot choose a block size larger than the matrix.
-        long blockDimension = Math.min(maxBlockForCache, matrixDimension);
-
-        long alignment = cacheLineSizeInBits / elementSizeInBits;
-        if (alignment > 0) {
-            blockDimension = (blockDimension / alignment) * alignment;
-            // Ensure blockDimension does not drop below one cache line's worth of elements.
-            if (blockDimension < alignment) {
-                blockDimension = alignment;
-            }
-        }
-        return blockDimension;
+    public static long sharedL3SquareCap(long cacheElems, int cores, long refs,
+            long leadingDim) {
+        long ti = leadingDim > 0 ? leadingDim : 1;
+        return NTSelectionAlgo.squareTile(cacheElems, cores, refs, ti);
     }
 }

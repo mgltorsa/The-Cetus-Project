@@ -1,25 +1,28 @@
 package cetus.transforms.paw_tiling;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 import cetus.analysis.AnalysisPass;
 import cetus.analysis.ArrayPrivatization;
 import cetus.analysis.DDTDriver;
 import cetus.analysis.DependenceVector;
-import cetus.analysis.LoopParallelizationPass;
 import cetus.analysis.LoopTools;
+import cetus.analysis.RangeAnalysis;
 import cetus.analysis.Reduction;
 import cetus.exec.Driver;
 import cetus.hir.Annotatable;
 import cetus.hir.Annotation;
 import cetus.hir.AnnotationDeclaration;
 import cetus.hir.ArrayAccess;
-import cetus.hir.AssignmentExpression;
-import cetus.hir.AssignmentOperator;
+import cetus.hir.ArraySpecifier;
+import cetus.hir.Declaration;
+import cetus.hir.VariableDeclarator;
 import cetus.hir.BinaryExpression;
 import cetus.hir.BinaryOperator;
 import cetus.hir.CetusAnnotation;
@@ -27,30 +30,57 @@ import cetus.hir.CodeAnnotation;
 import cetus.hir.CompoundStatement;
 import cetus.hir.DFIterator;
 import cetus.hir.Expression;
-import cetus.hir.FloatLiteral;
 import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
+import cetus.hir.IRTools;
 import cetus.hir.IfStatement;
 import cetus.hir.IntegerLiteral;
-import cetus.hir.Literal;
 import cetus.hir.Loop;
 import cetus.hir.PragmaAnnotation;
 import cetus.hir.PrintTools;
+import cetus.hir.Procedure;
 import cetus.hir.Program;
-import cetus.hir.Specifier;
 import cetus.hir.Statement;
-import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
 import cetus.hir.Symbolic;
 import cetus.hir.TranslationUnit;
 import cetus.hir.Traversable;
 import cetus.transforms.LoopInterchange;
 import cetus.transforms.TransformPass;
-import cetus.utils.ArrayUtils;
+import cetus.transforms.paw_tiling.analysis.ReuseOrderAnalyzer;
+import cetus.transforms.paw_tiling.analysis.EmptyDvAuditor;
+import cetus.transforms.paw_tiling.browse.CandidateBrowser;
+import cetus.transforms.paw_tiling.browse.CandidateBrowser.BrowseResult;
+import cetus.transforms.paw_tiling.legality.DirectionVectorLemmas;
+import cetus.transforms.paw_tiling.profitability.StaticProfitability;
+import cetus.transforms.paw_tiling.tile_size.BalancedTileCalculator;
+import cetus.transforms.paw_tiling.tile_size.LiteralExpr;
+import cetus.transforms.paw_tiling.tile_size.NTSelectionAlgo;
 import cetus.utils.ExperimentalSectionUtils;
 import cetus.utils.MemoryUtils;
 import cetus.utils.VariableDeclarationUtils;
 
+/**
+ * Parallel-Aware Tiling (PAW): reuse-ordered tiling with parallelism and
+ * legality derived from one shared set of dependence direction vectors
+ * (thesis Algorithm 3.1, extension of Pan et al. IWOMP'05). Four phases per
+ * perfect canonical nest:
+ *
+ * <ol>
+ * <li>Analysis: dependence vectors + loops ranked by decreasing temporal
+ * reuse ({@link ReuseOrderAnalyzer}).</li>
+ * <li>Reuse-ordered browsing of candidate tiled versions with symbolic tile
+ * sizes; illegal candidates discarded by the permutability lemma
+ * ({@link CandidateBrowser}).</li>
+ * <li>Tile-size selection (Fixed/NT/LRW raw sizes) and identification of
+ * the outermost parallel loop of the TILED nest (parallelism lemma); the
+ * balanced size S = I/(ceil(I/(P*T))*P) is substituted on its tile loop
+ * ({@link BalancedTileCalculator}).</li>
+ * <li>Emission: parallel annotation for OpenMP; profitability decided
+ * statically when possible ({@link StaticProfitability}), with the
+ * two-version runtime guard only when inconclusive.</li>
+ * </ol>
+ */
 public class ParallelAwareTiling extends TransformPass {
 
     public final static String PASS_NAME = "paw_tiling";
@@ -71,9 +101,6 @@ public class ParallelAwareTiling extends TransformPass {
     }
 
     private boolean isValidForTiling(ForLoop loop) {
-        // Check if the the loop is perfectly nested, if it has no branches, and if it
-        // has clear boundaries
-
         if (!LoopTools.isPerfectNest(loop))
             return false;
 
@@ -84,65 +111,122 @@ public class ParallelAwareTiling extends TransformPass {
     }
 
     private List<ForLoop> filterValidLoopNests() {
-        List<ForLoop> validLoops = new ArrayList<>();
+        LinkedHashSet<ForLoop> validLoops = new LinkedHashSet<>();
 
         List<List<Traversable>> sections = ExperimentalSectionUtils.findExperimentalSections(program);
 
         if (sections.isEmpty()) {
             PrintTools.printlnDebug("No experimental sections found.");
-
-            DFIterator<ForLoop> loopIterator = new DFIterator<>(program, ForLoop.class);
-            while (loopIterator.hasNext()) {
-                ForLoop loop = loopIterator.next();
-                // Check if the loop is valid for tiling
-                if (!isValidForTiling(loop) || !LoopTools.isOutermostLoop(loop))
-                    continue;
-
-                validLoops.add(loop);
-            }
+            validLoops.addAll(collectMaximalPerfectNests(program));
         } else {
             PrintTools.printlnDebug("Experimental sections found: " + sections.size());
             for (List<Traversable> section : sections) {
                 for (Traversable t : section) {
-                    if (!(t instanceof ForLoop)) {
-                        continue;
-                    }
-                    ForLoop loop = (ForLoop) t;
-                    // Check if the loop is valid for tiling
-                    if (!isValidForTiling(loop) || !LoopTools.isOutermostLoop(loop))
-                        continue;
-
-                    validLoops.add(loop);
+                    validLoops.addAll(collectMaximalPerfectNests(t));
                 }
             }
         }
 
-        return validLoops;
+        return new ArrayList<>(validLoops);
     }
 
-    public void checkPreconditions() {
-        String ddtOption = Driver.getOptionValue("ddt");
-        if (ddtOption != null && !ddtOption.equals("0")) {
-            // Run DDT if disabled
-            AnalysisPass.run(new DDTDriver(program)); // DDT Allow many things like loop naming and graph calculation
+    /**
+     * Maximal perfect canonical nests of depth ≥ 2. Inner perfect subnests of
+     * an imperfect outer loop are included (PolyBench syrk); {@code init_array}
+     * / {@code print_array} are skipped so PAPI does not measure setup I/O.
+     */
+    private List<ForLoop> collectMaximalPerfectNests(Traversable root) {
+        List<ForLoop> nests = new ArrayList<>();
+        if (root == null) {
+            return nests;
         }
+        DFIterator<ForLoop> iter = new DFIterator<>(root, ForLoop.class);
+        while (iter.hasNext()) {
+            ForLoop loop = iter.next();
+            if (!isValidForTiling(loop)) {
+                continue;
+            }
+            if (hasValidTilingAncestor(loop)) {
+                continue;
+            }
+            if (isSetupOrTeardown(loop)) {
+                continue;
+            }
+            if (nestDepth(loop) < 2) {
+                continue;
+            }
+            nests.add(loop);
+        }
+        return nests;
+    }
+
+    private boolean hasValidTilingAncestor(ForLoop loop) {
+        Traversable parent = loop.getParent();
+        while (parent != null) {
+            if (parent instanceof ForLoop && isValidForTiling((ForLoop) parent)) {
+                return true;
+            }
+            parent = parent.getParent();
+        }
+        return false;
+    }
+
+    private static int nestDepth(ForLoop nest) {
+        int depth = 0;
+        DFIterator<ForLoop> iter = new DFIterator<>(nest, ForLoop.class);
+        while (iter.hasNext()) {
+            iter.next();
+            depth++;
+        }
+        return depth;
+    }
+
+    /**
+     * Walk parents to the outermost enclosing {@code ForLoop}.
+     * {@link LoopTools#getOutermostLoop} infinite-loops when the argument is
+     * not already outermost (it never advances after finding the outer loop).
+     */
+    private static ForLoop enclosingOutermostFor(ForLoop loop) {
+        ForLoop outer = loop;
+        Traversable t = loop.getParent();
+        while (t != null) {
+            if (t instanceof ForLoop) {
+                outer = (ForLoop) t;
+            }
+            t = t.getParent();
+        }
+        return outer;
+    }
+
+    private static boolean isSetupOrTeardown(ForLoop loop) {
+        Procedure proc = IRTools.getAncestorOfType(loop, Procedure.class);
+        if (proc == null) {
+            return false;
+        }
+        String name = proc.getSymbolName();
+        if (name == null) {
+            return false;
+        }
+        return name.equals("init_array") || name.equals("print_array")
+                || name.startsWith("init_array") || name.startsWith("print_array");
+    }
+
+    private boolean isSerialTiling() {
+        return "0".equals(Driver.getOptionValue(PASS_NAME));
     }
 
     @Override
     public void start() {
 
-        // perform loop interchange
+        // Establish the algorithm's precondition: canonical memory order.
         try {
             TransformPass.run(new LoopInterchange(program));
         } catch (Exception e) {
-            // TODO: handle exception
+            PrintTools.printlnDebug("LoopInterchange failed: " + e);
         }
 
-        // Implementation of the parallel-aware tiling transformation
-        // This is a placeholder for the actual implementation
         PrintTools.printlnDebug("Starting parallel-aware tiling transformation...");
 
-        PrintTools.printlnDebug("Adding math library to the program.");
         for (Traversable t : program.getChildren()) {
             if (!(t instanceof TranslationUnit)) {
                 continue;
@@ -153,8 +237,7 @@ public class ParallelAwareTiling extends TransformPass {
         }
 
         List<ForLoop> validLoops = filterValidLoopNests();
-        boolean hasTilableLoops = !validLoops.isEmpty();
-        if (!hasTilableLoops) {
+        if (validLoops.isEmpty()) {
             PrintTools.printlnDebug("No tilable loops found.");
             return;
         }
@@ -163,7 +246,9 @@ public class ParallelAwareTiling extends TransformPass {
         for (ForLoop targetLoop : validLoops) {
             try {
                 TiledLoop newLoop = processLoop(targetLoop);
-                updatedLoops.add(newLoop);
+                if (newLoop != null) {
+                    updatedLoops.add(newLoop);
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 PrintTools.print(
@@ -173,252 +258,302 @@ public class ParallelAwareTiling extends TransformPass {
 
         reRunPasses();
         for (TiledLoop forLoop : updatedLoops) {
-            updateLoopInfo(forLoop);
+            setupTileSizesMetadata(forLoop);
         }
 
     }
 
-    private void updateLoopInfo(TiledLoop loop) {
-        // tagParallelLoops(loop);
-        balanceTileSizesAndEnsuringParallelizability(loop);
-        setupTileSizesMetadata(loop);
-    }
-
-    private void tagParallelLoops(TiledLoop loop) {
-        ForLoop parallelLoop = loop.getOutermostParallelizableLoop();
-        if(parallelLoop == null) {
-            return;
-        }
-        boolean isParallelizationEnabled = Driver.isIncluded("parallelize-loops",
-                "Loop", LoopTools.getLoopName((Statement) loop));
-        if (isParallelizationEnabled) {
-            CetusAnnotation note = new CetusAnnotation();
-            note.put("parallel", "true");
-            ((Annotatable) parallelLoop).annotate(note);
-        }
-    }
-
-    private String calculateTileSizeValue(Expression tileSize) {
-        if (tileSize instanceof IntegerLiteral) {
-            return tileSize.toString();
-        }
-        long tileSizeValueLong = Symbolic.getConstantCoefficient(tileSize);
-        if (tileSizeValueLong > 0) {
-            return "coeff_" + String.valueOf(tileSizeValueLong);
-        }
-
-        List<Expression> factors = Symbolic.getFactors(tileSize);
-
-        List<IntegerLiteral> integerFactors = factors.stream().filter(factor -> factor instanceof IntegerLiteral)
-                .map(factor -> (IntegerLiteral) factor).collect(Collectors.toList());
-
-        if (integerFactors.size() >= 1) {
-            StringBuilder sb = new StringBuilder();
-
-            for (int i = 0; i < integerFactors.size(); i++) {
-                IntegerLiteral factor = integerFactors.get(i);
-                String factorStr = "fc_" + i + "#" + factor.toString();
-                sb.append(factorStr);
-            }
-            return sb.toString();
-        }
-
-        List<Expression> terms = Symbolic.getTerms(tileSize);
-
-        List<IntegerLiteral> integerTerms = terms.stream().filter(term -> term instanceof IntegerLiteral)
-                .map(term -> (IntegerLiteral) term).collect(Collectors.toList());
-
-        if (integerTerms.size() >= 1) {
-            StringBuilder sb = new StringBuilder();
-            for (IntegerLiteral term : integerTerms) {
-                String termStr = "term_" + term.toString();
-                sb.append(termStr);
-            }
-            return sb.toString();
-        }
-
-        return "complex";
-
-    }
-
-    private void setupTileSizesMetadata(TiledLoop loop) {
-        PrintTools.printlnDebug("Setting up tile sizes metadata for loop: " + loop);
-        LoopTools.addLoopName(program, true);
-        Map<Expression, Expression> tileSizes = loop.getTileSizes();
-        for (Expression tileSizeIndexVar : tileSizes.keySet()) {
-            String loopName = LoopTools.getLoopName(loop);
-            String tileSizeName = tileSizeIndexVar.toString();
-
-            Expression actualTileSize = tileSizes.get(tileSizeIndexVar);
-            String tileSizeValue = calculateTileSizeValue(actualTileSize);
-
-            String metadata = String.format("%s=%s#%s", loopName, tileSizeName, tileSizeValue);
-
-            String pragmaStr = String.format("c_paw_tiling %s", metadata);
-            PragmaAnnotation pragmaAnnot = new PragmaAnnotation(pragmaStr);
-            loop.annotateBefore(pragmaAnnot);
-        }
-    }
-
-    private void balanceTileSizesAndEnsuringParallelizability(TiledLoop loop) {
-        PrintTools.printlnDebug("Balancing tile size for loop: " + loop);
-        SymbolTable symbolTable = VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent());
-        Map<Expression, Expression> tileSizes = loop.getTileSizes();
-        DFIterator<ForLoop> loopIterator = new DFIterator<>(loop, ForLoop.class);
-        while (loopIterator.hasNext()) {
-            ForLoop innerLoop = loopIterator.next();
-            List<CetusAnnotation> cetusAnnots = innerLoop.getAnnotations(CetusAnnotation.class);
-
-            boolean isParallel = false;
-            for (CetusAnnotation cetusAnnot : cetusAnnots) {
-                isParallel = Boolean.parseBoolean(cetusAnnot.get("parallel"));
-                if (isParallel)
-                    break;
-
-            }
-
-            if (!isParallel)
-                continue;
-
-            if (!Tiler.isCrossStripLoop(innerLoop))
-                continue;
-
-            // handle cross strip loops
-            Expression balancedTile = getBalancedTile(symbolTable, innerLoop, tileSizes);
-
-            Expression indexVariable = LoopTools.getIndexVariable(innerLoop);
-            Expression stepLHS = indexVariable;
-            Expression stepRHS = balancedTile;
-            Expression newStepExpr = null;
-
-            if (balancedTile instanceof IntegerLiteral) {
-                newStepExpr = new AssignmentExpression(stepLHS.clone(), AssignmentOperator.ADD,
-                        stepRHS.clone());
-            } else {
-                Symbol loopSymbol = LoopTools.getLoopIndexSymbol(loop);
-
-                IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(symbolTable,
-                        loopSymbol.getSymbolName());
-
-                if (stripIdentifier == null) {
-                    stripIdentifier = VariableDeclarationUtils.declareVariable(symbolTable,
-                            loopSymbol.getSymbolName(),
-                            balancedTile);
-
-                } else {
-                    VariableDeclarationUtils.replaceVariableDeclaration(symbolTable, stripIdentifier, balancedTile);
-                }
-
-                newStepExpr = new AssignmentExpression(stepLHS.clone(), AssignmentOperator.ADD,
-                        stripIdentifier);
-            }
-            innerLoop.setStep(newStepExpr);
-
-        }
-    }
-
-    private Expression getBalancedTile(SymbolTable symbolTable, ForLoop loop, Map<Expression, Expression> tileSizes) {
-        Expression indexVar = LoopTools.getIndexVariable(loop);
-        Expression balancedTile = null;
-
-        for (Expression tileSize : tileSizes.keySet()) {
-
-            if (!indexVar.toString().toLowerCase().contains(tileSize.toString().toLowerCase()))
-                continue;
-
-            balancedTile = tileSizes.get(tileSize);
-
-            // Expression coresExpression = new
-            // IntegerLiteral(tilingParams.getNumOfProcessors());
-            // if (tilingParams.getTypeSelectionAlgo() != SelectionAlgorithm.FIXED) {
-            // balancedTile = Symbolic.divide(balancedTile, coresExpression);
-            // }
-
-            int integerSizeInBits = ArrayUtils.getTypeSizeInBits(Specifier.INT);
-            int cacheLineInBytes = tilingParams.getCacheLineInBytes();
-            int cacheLineInIntegers = cacheLineInBytes / (integerSizeInBits / 8);
-            IntegerLiteral cacheLineInIntegersLiteral = new IntegerLiteral(cacheLineInIntegers);
-
-            balancedTile = Symbolic.simplify(balancedTile);
-
-            // align cache size
-            Expression alignmentExpr = Symbolic.mod(balancedTile,
-                    cacheLineInIntegersLiteral);
-            balancedTile = Symbolic.add(balancedTile, alignmentExpr);
-
-            return balancedTile;
-
-        }
-
-        PrintTools.printlnDebug("No balanced tile found for loop: " + loop);
-        throw new RuntimeException("No balanced tile found for loop: " + loop);
-
-    }
-
+    /**
+     * Runs the four phases on one valid nest. Returns the final tiled nest
+     * (attached to the program), or null when the nest was left untouched
+     * (no legal candidate, no usable tile size, or provably unprofitable).
+     */
     private TiledLoop processLoop(ForLoop targetLoop) throws Exception {
-        // Perform tiling transformation on the loop
-        // This is a placeholder for the actual implementation
-        PrintTools.printlnDebug("Tiling loop: " + targetLoop);
+        PrintTools.printlnDebug("PAW tiling loop: " + LoopTools.getLoopName(targetLoop));
 
-        // For every loop create a map of tile sizes
-        Map<Expression, Expression> tileSizes = tilingParams.getTileSizeSelectionAlgo().getTileSizes(targetLoop);
-        if (tileSizes == null || tileSizes.isEmpty()) {
-            throw new Exception("No tile sizes found for loop: " + targetLoop);
+        SymbolTable symtab = VariableDeclarationUtils
+                .getVariableDeclarationSpace(targetLoop.getParent());
+
+        // ---------- Phase 1: loop-nest analysis ----------
+        LinkedList<Loop> nestLoops = new LinkedList<>();
+        new DFIterator<Loop>(targetLoop, Loop.class).forEachRemaining(nestLoops::add);
+
+        List<DependenceVector> originalDvs = new ArrayList<>();
+        EmptyDvAuditor.Result dvAudit = EmptyDvAuditor.audit(targetLoop, nestLoops,
+                program.getDDGraph());
+        originalDvs = dvAudit.dvs;
+        PrintTools.printlnDebug("[paw] Phase1 DVs status=" + dvAudit.status
+                + " (" + dvAudit.detail + ")");
+
+        List<ForLoop> reuseOrder = ReuseOrderAnalyzer.reuseOrder(targetLoop);
+        int depth = tilingParams.getTilingLevel() <= 0
+                ? nestLoops.size()
+                : tilingParams.getTilingLevel();
+        List<ForLoop> candidates = reuseOrder.subList(0,
+                Math.min(depth, reuseOrder.size()));
+
+        // Raw tile sizes for the browse candidates (method M).
+        Map<Expression, Expression> rawSizes = tilingParams
+                .getTileSizeSelectionAlgo().getTileSizes(targetLoop, candidates);
+        List<ForLoop> browseCandidates = new ArrayList<>();
+        for (ForLoop candidate : candidates) {
+            Expression indexVar = LoopTools.getIndexVariable(candidate);
+            Expression raw = indexVar == null ? null : rawSizes.get(indexVar);
+            if (raw == null || "1".equals(raw.toString())) {
+                continue;
+            }
+            // Strip-mining a loop whose tile covers the whole trip is a
+            // no-op that only adds extra loop overhead (and extra L3
+            // traffic from worse prefetch). Skip it.
+            Expression trip = ReuseOrderAnalyzer.tripCount(candidate);
+            long tripLit = LiteralExpr.asPositiveLiteral(trip);
+            long rawLit = LiteralExpr.asPositiveLiteral(raw);
+            if (tripLit > 0 && rawLit > 0 && rawLit >= tripLit) {
+                PrintTools.printlnDebug("[paw] skip no-op tile " + indexVar
+                        + " size=" + rawLit + " >= trip=" + tripLit);
+                continue;
+            }
+            browseCandidates.add(candidate);
+        }
+        if (browseCandidates.isEmpty()) {
+            PrintTools.printlnDebug("[paw] no usable tile sizes; nest untouched");
+            return null;
         }
 
-        TiledLoop tiledLoop = tile(targetLoop, tileSizes); // Example tile size
+        // ---------- Phase 4 precondition: profitability is queried while
+        // the original nest is still attached to the program ----------
+        Expression totalIterations = calculateTotalOfInstructions(targetLoop);
+        Expression cacheElems = calculateCacheInNumberOfElements(targetLoop,
+                tilingParams.getCacheSizeInKB());
+        Expression footprint = calculateDataFullSize(targetLoop);
 
-        Expression totalOfInstructions = calculateTotalOfInstructions(targetLoop);
-        Expression totalElementsInCache = calculateCacheInNumberOfElements(targetLoop, tilingParams.getCacheSizeInKB());
-        Expression dataFullSize = calculateDataFullSize(targetLoop);
+        StaticProfitability.Decision decision = tilingParams.isEnableTilingProfitability()
+                ? StaticProfitability.decide(targetLoop, totalIterations,
+                        cacheElems, footprint,
+                        tilingParams.getMaxIterationsToParallelize())
+                : StaticProfitability.Decision.PROVE_TILED;
 
-        TiledLoop clonedTiledLoop = tiledLoop.clone(false);
-        Statement optimizedStatement = clonedTiledLoop;
+        if (decision == StaticProfitability.Decision.PROVE_UNTILED) {
+            PrintTools.printlnDebug("[paw] tiling provably unprofitable; nest untouched");
+            return null;
+        }
 
-        if (tilingParams.isEnableTilingProfitability()) {
-            optimizedStatement = createOptimizedStatement(totalOfInstructions, totalElementsInCache,
-                    dataFullSize, targetLoop.clone(false), clonedTiledLoop);
+        // ---------- Phase 2: reuse-ordered version browsing ----------
+        String nestTag = LoopTools.getLoopName(targetLoop);
+        nestTag = nestTag == null ? ("nest" + System.identityHashCode(targetLoop))
+                : nestTag.replaceAll("[^A-Za-z0-9_]", "_");
+        BrowseResult browse = CandidateBrowser.browse(targetLoop, originalDvs,
+                browseCandidates, depth, symtab, nestTag);
+        if (browse.nest == null) {
+            PrintTools.printlnDebug("[paw] no legal tiled version; nest untouched");
+            return null;
+        }
 
-            if (optimizedStatement instanceof IfStatement) {
-                CompoundStatement elseStmt = (CompoundStatement) ((IfStatement) optimizedStatement).getElseStatement();
-                for (Traversable stmt : elseStmt.getChildren()) {
-                    if (!(stmt instanceof TiledLoop))
-                        continue;
+        // ---------- Phase 3: tile-size selection and balancing ----------
+        boolean innerSubnest = !LoopTools.isOutermostLoop(targetLoop);
+        ForLoop enclosingOuter = enclosingOutermostFor(targetLoop);
 
-                    clonedTiledLoop = (TiledLoop) stmt;
+        Loop parallelLoop = DirectionVectorLemmas.outermostParallelLoop(
+                browse.dvs, browse.order);
+        String parallelName = parallelLoop == null ? null
+                : DirectionVectorLemmas.loopName(parallelLoop);
+
+        int elemBytes = NTSelectionAlgo.elementBytes(targetLoop);
+        int lineElems = Math.max(tilingParams.getCacheLineInBytes() / elemBytes, 1);
+
+        Map<Expression, Expression> finalSizes = new LinkedHashMap<>();
+        for (Map.Entry<String, IDExpression> entry : browse.symbolicSizes.entrySet()) {
+            String indexName = entry.getKey();
+            IDExpression sizeId = entry.getValue();
+
+            Expression raw = null;
+            ForLoop originalLoop = null;
+            for (ForLoop candidate : browseCandidates) {
+                Expression indexVar = LoopTools.getIndexVariable(candidate);
+                if (indexVar != null && indexVar.toString().equals(indexName)) {
+                    raw = rawSizes.get(indexVar);
+                    originalLoop = candidate;
                     break;
                 }
             }
+            if (raw == null || originalLoop == null) {
+                continue;
+            }
+
+            Expression assigned = raw;
+            boolean isParallelTileLoop = !innerSubnest && parallelName != null
+                    && parallelName.equals(indexName + Tiler.CROSS_TILE_SUFFIX);
+            if (isParallelTileLoop && !isSerialTiling()) {
+                Expression trip = ReuseOrderAnalyzer.tripCount(originalLoop);
+                assigned = BalancedTileCalculator.balancedSize(trip, raw,
+                        tilingParams.getNumOfProcessors(), lineElems);
+                PrintTools.printlnDebug("[paw] balanced tile for parallel loop "
+                        + parallelName + ": " + assigned);
+            }
+            VariableDeclarationUtils.replaceVariableDeclaration(symtab, sizeId,
+                    Symbolic.simplify(assigned));
+            Expression indexVar = LoopTools.getIndexVariable(originalLoop);
+            finalSizes.put(indexVar, assigned);
+        }
+        browse.nest.setTileSizes(finalSizes);
+        browse.nest.setOriginalLoop(targetLoop);
+        browse.nest.setOriginalDvs(originalDvs);
+
+        // ---------- Phase 4: emission ----------
+        // Stale parallel annotations do not survive tiling (Theorem 1).
+        stripParallelAnnotations(browse.nest);
+        if (!isSerialTiling()) {
+            if (innerSubnest && enclosingOuter instanceof Annotatable) {
+                // Keep OpenMP on the enclosing i loop; an inner parallel for
+                // would fork a team on every outer iteration.
+                CetusAnnotation note = new CetusAnnotation();
+                note.put("parallel", "true");
+                ((Annotatable) enclosingOuter).annotate(note);
+            } else if (parallelLoop != null) {
+                CetusAnnotation note = new CetusAnnotation();
+                note.put("parallel", "true");
+                ((Annotatable) parallelLoop).annotate(note);
+            }
         }
 
-        replaceLoop(targetLoop, optimizedStatement);
+        Statement replacement;
+        if (decision == StaticProfitability.Decision.PROVE_TILED) {
+            replacement = browse.nest;
+        } else { // UNKNOWN: two guarded versions
+            replacement = buildRuntimeGuard(totalIterations, cacheElems,
+                    footprint, targetLoop.clone(false), browse.nest);
+        }
 
-        return clonedTiledLoop;
-
+        replaceLoop(targetLoop, replacement);
+        return browse.nest;
     }
 
-    private Expression calculateDataFullSize(ForLoop loop) {
-        PrintTools.printlnDebug("Calculating data full size for loop: " + loop);
-        List<ArrayAccess> arrayAccesses = new ArrayList<>();
-        new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
+    private void stripParallelAnnotations(ForLoop nest) {
+        DFIterator<ForLoop> iter = new DFIterator<>(nest, ForLoop.class);
+        while (iter.hasNext()) {
+            ForLoop loop = iter.next();
+            List<CetusAnnotation> notes = loop.getAnnotations(CetusAnnotation.class);
+            if (notes == null) {
+                continue;
+            }
+            for (CetusAnnotation note : notes) {
+                if (note.get("parallel") != null) {
+                    note.remove("parallel");
+                }
+            }
+        }
+    }
 
-        return ArrayUtils.getFullSize(VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent()),
-                arrayAccesses);
+    /**
+     * Two-version guard (thesis Phase 4): fall back to the untiled nest when
+     * the data fits in the cache OR the iteration count is too small.
+     */
+    private Statement buildRuntimeGuard(Expression iterations, Expression cache,
+            Expression footprint, Statement untiled, Statement tiled) {
+
+        Expression fewIterations = new BinaryExpression(iterations.clone(),
+                BinaryOperator.COMPARE_LE,
+                new IntegerLiteral(tilingParams.getMaxIterationsToParallelize()));
+        Expression fitsInCache = new BinaryExpression(cache.clone(),
+                BinaryOperator.COMPARE_GE, footprint.clone());
+        Expression unprofitable = new BinaryExpression(fewIterations,
+                BinaryOperator.LOGICAL_OR, fitsInCache);
+
+        CompoundStatement tiledBlock = new CompoundStatement();
+        tiledBlock.addStatement(tiled);
+
+        return new IfStatement(unprofitable, untiled, tiledBlock);
+    }
+
+    /**
+     * Nest footprint in array elements: sum of the declared sizes of the
+     * DISTINCT arrays accessed in the nest (each dimension symbolically
+     * simplified, so {@code w[N+1][N+1]} contributes {@code (N+1)^2}).
+     */
+    private Expression calculateDataFullSize(ForLoop loop) {
+        SymbolTable symbols = VariableDeclarationUtils
+                .getVariableDeclarationSpace(loop.getParent());
+        Set<String> seen = new LinkedHashSet<>();
+        Expression total = new IntegerLiteral(0);
+
+        DFIterator<ArrayAccess> iter = new DFIterator<>(loop, ArrayAccess.class);
+        while (iter.hasNext()) {
+            ArrayAccess access = iter.next();
+            Expression arrayName = access.getArrayName();
+            if (!(arrayName instanceof IDExpression)
+                    || !seen.add(arrayName.toString())) {
+                continue;
+            }
+            Expression size = declaredArraySize(symbols, (IDExpression) arrayName);
+            if (size != null) {
+                total = Symbolic.add(total, size);
+            }
+        }
+        return Symbolic.simplify(total);
+    }
+
+    /** Product of the declared dimensions of the array, or null. */
+    private Expression declaredArraySize(SymbolTable symbols, IDExpression arrayID) {
+        Declaration declaration = symbols.findSymbol(arrayID);
+        if (declaration == null) {
+            return null;
+        }
+        Expression size = null;
+        for (Traversable childObj : declaration.getChildren()) {
+            if (!(childObj instanceof VariableDeclarator)) {
+                continue;
+            }
+            VariableDeclarator child = (VariableDeclarator) childObj;
+            if (!child.getSymbolName().equals(arrayID.toString())) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<ArraySpecifier> specs = child.getArraySpecifiers();
+            for (ArraySpecifier spec : specs) {
+                for (int j = 0; j < spec.getNumDimensions(); j++) {
+                    Expression dim = spec.getDimension(j);
+                    if (dim == null) {
+                        continue;
+                    }
+                    Expression simplified = Symbolic.simplify(dim.clone());
+                    size = (size == null) ? simplified
+                            : Symbolic.multiply(size, simplified);
+                }
+            }
+        }
+        return size;
     }
 
     private Expression calculateCacheInNumberOfElements(ForLoop loop, long cacheSizeInKB) {
-        // Placeholder for the actual cache size calculation
-        // This is where the cache size calculation would be applied to the loop
-        PrintTools.printlnDebug("Calculating cache size in number of elements for loop: " + loop);
         List<ArrayAccess> arrayAccesses = new ArrayList<>();
         new DFIterator<ArrayAccess>(loop, ArrayAccess.class).forEachRemaining(arrayAccesses::add);
 
         return new IntegerLiteral(MemoryUtils.getCacheInArrayElements(cacheSizeInKB, arrayAccesses));
     }
 
+    private Expression calculateTotalOfInstructions(ForLoop loop) throws Exception {
+        DFIterator<ForLoop> loopIterator = new DFIterator<>(loop, ForLoop.class);
+        Expression totalInstructions = new IntegerLiteral(1);
+        while (loopIterator.hasNext()) {
+            ForLoop innerLoop = loopIterator.next();
+            Expression instructions = LoopTools.getUpperBoundExpression(innerLoop);
+            if (instructions == null)
+                throw new Exception("Loop upper bound expression is null.");
+
+            totalInstructions = new BinaryExpression(totalInstructions.clone(), BinaryOperator.MULTIPLY,
+                    instructions.clone());
+
+        }
+
+        return totalInstructions;
+    }
+
     public void reRunPasses() {
 
-        boolean isSerialTiling = Driver.getOptionValue(PASS_NAME).equals("0");
+        boolean isSerialTiling = isSerialTiling();
+
+        // Ranges were computed on the pre-tiling IR.
+        RangeAnalysis.invalidate();
 
         String privatizeOption = Driver.getOptionValue("privatize");
         String ddtOption = Driver.getOptionValue("ddt");
@@ -439,38 +574,43 @@ public class ParallelAwareTiling extends TransformPass {
             }
         }
 
-        // String profitableOmpCopy = Driver.getOptionValue("profitable-omp");
-
-        // TODO: Fix this. Since in tiling tiles are usually smaller, it is not
-        // profitable to run ompGen
-        // However, tiles do not represent the actual parallel iterations, so we need to
-        // run ompGen after
-        // loop parallelization pass.
+        // Tiles are usually small; ompGen's profitability model would reject
+        // them even though the tile loop distributes whole tiles per thread.
         Driver.setOptionValue("profitable-omp", "0");
-
-        // CodeGenPass.run(new ompGen(program));
-
-        // Driver.setOptionValue("profitable-omp", profitableOmpCopy);
 
     }
 
-    private Expression calculateTotalOfInstructions(ForLoop loop) throws Exception {
-        // TODO: TAKE A LOOK AT THIS!
-        // LoopTools.getReuseDistance(loop, null, null)
-        DFIterator<ForLoop> loopIterator = new DFIterator<>(loop, ForLoop.class);
-        Expression totalInstructions = new IntegerLiteral(1);
-        while (loopIterator.hasNext()) {
-            ForLoop innerLoop = loopIterator.next();
-            Expression instructions = LoopTools.getUpperBoundExpression(innerLoop);
-            if (instructions == null)
-                throw new Exception("Loop upper bound expression is null.");
-
-            totalInstructions = new BinaryExpression(totalInstructions.clone(), BinaryOperator.MULTIPLY,
-                    instructions.clone());
-
+    private String calculateTileSizeValue(Expression tileSize) {
+        if (tileSize instanceof IntegerLiteral) {
+            return tileSize.toString();
         }
+        long tileSizeValueLong = Symbolic.getConstantCoefficient(tileSize);
+        if (tileSizeValueLong > 0) {
+            return "coeff_" + String.valueOf(tileSizeValueLong);
+        }
+        return "symbolic";
+    }
 
-        return totalInstructions;
+    private void setupTileSizesMetadata(TiledLoop loop) {
+        if (loop.getParent() == null) {
+            return; // not attached (should not happen)
+        }
+        LoopTools.addLoopName(program, true);
+        ForLoop pragmaLoop = enclosingOutermostFor(loop);
+        Map<Expression, Expression> tileSizes = loop.getTileSizes();
+        for (Expression tileSizeIndexVar : tileSizes.keySet()) {
+            String loopName = LoopTools.getLoopName(pragmaLoop);
+            String tileSizeName = tileSizeIndexVar.toString();
+
+            Expression actualTileSize = tileSizes.get(tileSizeIndexVar);
+            String tileSizeValue = calculateTileSizeValue(actualTileSize);
+
+            String metadata = String.format("%s=%s#%s", loopName, tileSizeName, tileSizeValue);
+
+            String pragmaStr = String.format("c_paw_tiling %s", metadata);
+            PragmaAnnotation pragmaAnnot = new PragmaAnnotation(pragmaStr);
+            pragmaLoop.annotateBefore(pragmaAnnot);
+        }
     }
 
     private void replaceLoop(ForLoop originalLoop, Statement newLoop) {
@@ -497,137 +637,6 @@ public class ParallelAwareTiling extends TransformPass {
                 newLoop.annotateBefore(annotation.clone());
             }
         }
-    }
-
-    private Statement createOptimizedStatement(Expression maxOfInstructions, Expression cache, Expression dataFullSize,
-            Statement noTiledCode, Statement tiledCode) {
-
-        Expression instructionsCondition = new BinaryExpression(maxOfInstructions.clone(), BinaryOperator.COMPARE_LE,
-                new IntegerLiteral(tilingParams.getMaxIterationsToParallelize()));
-
-        Expression cacheCond = new BinaryExpression(cache.clone(), BinaryOperator.COMPARE_GT, dataFullSize.clone());
-        Expression condition = new BinaryExpression(instructionsCondition.clone(), BinaryOperator.LOGICAL_AND,
-                cacheCond.clone());
-
-        CompoundStatement leastCostVersionStm = new CompoundStatement();
-        leastCostVersionStm.addStatement(tiledCode);
-
-        if (!(maxOfInstructions instanceof Literal)
-                || !(cache instanceof Literal)
-                || !(dataFullSize instanceof Literal)) {
-            IfStatement ifStm = new IfStatement(condition, noTiledCode, leastCostVersionStm);
-            return ifStm;
-
-        } else {
-            boolean isProfitableParallelIterations = false;
-            boolean isEnoughCache = false;
-            if (maxOfInstructions instanceof IntegerLiteral) {
-                long inst = ((IntegerLiteral) maxOfInstructions).getValue();
-                isProfitableParallelIterations = inst >= tilingParams.getMaxIterationsToParallelize();
-            } else if (maxOfInstructions instanceof FloatLiteral) {
-                double inst = ((FloatLiteral) maxOfInstructions).getValue();
-                isProfitableParallelIterations = inst <= tilingParams.getMaxIterationsToParallelize();
-            }
-
-            long cacheSize = ((IntegerLiteral) cache).getValue();
-
-            if (dataFullSize instanceof IntegerLiteral) {
-                long fullSizeData = ((IntegerLiteral) dataFullSize).getValue();
-                isEnoughCache = cacheSize > fullSizeData;
-
-            } else if (dataFullSize instanceof FloatLiteral) {
-                double fullSizeData = ((FloatLiteral) dataFullSize).getValue();
-                isEnoughCache = cacheSize > fullSizeData;
-
-            }
-            if (isProfitableParallelIterations && isEnoughCache) {
-                return tiledCode;
-            } else {
-                return noTiledCode;
-            }
-        }
-    }
-
-    public TiledLoop tile(ForLoop loop, Map<Expression, Expression> tileSizes) throws Exception {
-
-        // Placeholder for the actual tiling implementation
-        // This is where the tiling transformation would be applied to the loop
-        PrintTools.printlnDebug("Tiling loop: " + loop + " with tile size: " + tileSizes);
-
-        SymbolTable symbolTable = VariableDeclarationUtils
-                .getVariableDeclarationSpace(loop.getParent());
-
-        LinkedList<Loop> nestedLoops = new LinkedList<>();
-        new DFIterator<Loop>(loop, Loop.class).forEachRemaining(nestedLoops::add);
-
-        List<DependenceVector> originalDvs = new ArrayList<>();
-        if (program.getDDGraph() != null) {
-            originalDvs = program.getDDGraph().getDirectionMatrix(nestedLoops);
-            if (originalDvs == null) {
-                PrintTools.printlnDebug("Original DVs are null for loop: " + loop);
-                originalDvs = new ArrayList<>();
-            }
-        }
-
-        TiledLoop tiledLoop = new TiledLoop(loop.clone(false), originalDvs);
-        List<DependenceVector> curDvs = originalDvs;
-        for (int i = 0; i < nestedLoops.size(); i++) {
-            ForLoop currNestedLoop = (ForLoop) nestedLoops.get(i);
-            Expression indexVar = LoopTools.getIndexVariable(currNestedLoop);
-
-            if (!tileSizes.containsKey(indexVar))
-                continue;
-
-            Expression tileSize = tileSizes.get(indexVar);
-            if (tileSize == null) {
-                PrintTools.printlnDebug("Tile size is null for index: " + indexVar);
-                continue;
-            }
-            if (tileSize.toString().equals("1")) {
-                PrintTools.printlnDebug("Tile size is 1 for index: " + indexVar + "so, skipping tiling.");
-                continue;
-            }
-
-            int targetLoopPos = getLoopPosByIndex(tiledLoop, indexVar);
-
-            TiledLoop clonedTiledLoop = tiledLoop.clone(false);
-            tiledLoop = Tiler.tile(symbolTable, clonedTiledLoop, tileSize, targetLoopPos, curDvs);
-
-            curDvs = tiledLoop.getDependenceVectors();
-        }
-
-        tiledLoop.setNewDependenceVectors(curDvs);
-        tiledLoop.setTileSizes(tileSizes);
-        tiledLoop.setOriginalLoop(loop);
-        tiledLoop.setOriginalDvs(originalDvs);
-        tiledLoop.calculateOutermostParallelLoop();
-        return tiledLoop;
-    }
-
-    private int getLoopPosByIndex(Loop loopNest, Expression index) throws Exception {
-        int foundPos = -1;
-        DFIterator<Loop> loopIter = new DFIterator<Loop>(loopNest, Loop.class);
-
-        int curPos = 0;
-        while (loopIter.hasNext() && foundPos == -1) {
-            Loop curLoop = loopIter.next();
-            Symbol curSymbol = LoopTools.getLoopIndexSymbol(curLoop);
-
-            if (curSymbol == null || !curSymbol.getSymbolName().equals(index.toString())) {
-                curPos++;
-                continue;
-            }
-
-            foundPos = curPos;
-            break;
-
-        }
-
-        if (foundPos == -1) {
-            throw new Exception("Index does not exist in the given loop nest");
-        }
-
-        return foundPos;
     }
 
     @Override

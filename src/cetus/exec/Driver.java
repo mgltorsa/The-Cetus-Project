@@ -13,6 +13,7 @@ import cetus.hir.Tools;
 import cetus.transforms.*;
 import cetus.transforms.paw_tiling.ParallelAwareTiling;
 import cetus.transforms.paw_tiling.TilingParams;
+import cetus.transforms.paw_tiling.instrumentation.PAPIInstrumentation;
 
 import java.io.*;
 import java.util.Arrays;
@@ -351,13 +352,8 @@ public class Driver {
                         + "      =2 Profile-based loop selection");
 
         options.add(options.TRANSFORM,
-                    "loop_interchange", 
-                     "Exchanges the order of two iteration variables used by a nested loop");
-        
-        options.add(options.ANALYSIS,
-                     "subsub_analysis", 
-                      "Performs subscripted subscript analysis on the program");
-                
+                "loop_interchange",
+                "Exchanges the order of two iteration variables used by a nested loop");
 
         options.add(options.TRANSFORM,
                 ParallelAwareTiling.PASS_NAME,
@@ -407,6 +403,27 @@ public class Driver {
                 TilingParams.FIXED_TILE_SIZE_PARAM_NAME,
                 null,
                 "" + TilingParams.FIXED_TILE_SIZE_DESCR);
+
+        options.add(options.TRANSFORM,
+                TilingParams.TILING_LEVEL_PARAM_NAME,
+                null,
+                "" + TilingParams.DEFAULT_TILING_LEVEL,
+                "N",
+                TilingParams.TILING_LEVEL_PARAM_DESCR);
+
+        options.add(options.TRANSFORM,
+                PAPIInstrumentation.PASS_NAME,
+                null,
+                null,
+                "N",
+                PAPIInstrumentation.PASS_CMD_DESCR);
+
+        options.add(options.TRANSFORM,
+                PAPIInstrumentation.EVENTS_PARAM_NAME,
+                null,
+                PAPIInstrumentation.DEFAULT_EVENTS,
+                "S",
+                PAPIInstrumentation.EVENTS_PARAM_DESCR);
 
     }
 
@@ -872,10 +889,7 @@ public class Driver {
         if (getOptionValue("privatize") != null && !getOptionValue("privatize").equals("0")) {
             AnalysisPass.run(new ArrayPrivatization(program));
         }
-        if (getOptionValue("subsub_analysis") != null) {
-            AnalysisPass.run(new SubscriptedSubscriptAnalysis(program));
-        }
-      
+
         if (getOptionValue("ddt") != null && !getOptionValue("ddt").equals("0")) {
             AnalysisPass.run(new DDTDriver(program));
         }
@@ -910,6 +924,13 @@ public class Driver {
             CodeGenPass.run(new ompGen(program));
         }
 
+        // PAPI instrumentation wraps the final (tiled + OpenMP) regions, so
+        // it must run after ompGen.
+        if (getOptionValue(PAPIInstrumentation.PASS_NAME) != null
+                && !getOptionValue(PAPIInstrumentation.PASS_NAME).equals("0")) {
+            TransformPass.run(new PAPIInstrumentation(program));
+        }
+
         /*
          * if (getOptionValue("loop-tiling") != null) {
          * AnalysisPass.run(new LoopTiling(program));
@@ -919,7 +940,6 @@ public class Driver {
             TransformPass.run(new LoopProfiler(program));
         }
 
-        
     }
 
     /**
