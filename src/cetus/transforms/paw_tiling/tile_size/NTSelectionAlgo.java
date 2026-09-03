@@ -1,7 +1,5 @@
 package cetus.transforms.paw_tiling.tile_size;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,205 +10,163 @@ import cetus.hir.DFIterator;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
 import cetus.hir.IntegerLiteral;
-import cetus.hir.Loop;
+import cetus.hir.PrintTools;
 import cetus.hir.Symbolic;
+import cetus.transforms.paw_tiling.analysis.ReuseOrderAnalyzer;
 import cetus.utils.ArrayUtils;
 
+/**
+ * Naive Tile (NT) method -- shared-cache capacity model (thesis
+ * sec. 3.3.2). All quantities are in array elements; {@code CacheSize} is
+ * the TOTAL shared L3 capacity (a single resident copy of the
+ * highest-reuse reference serves all cores) and the {@code Cores x Refs}
+ * term reserves capacity for the per-thread access streams:
+ *
+ * <pre>
+ * t_i * t_j + Cores * Refs &lt;= CacheSize
+ * t_j = floor((CacheSize - Cores * Refs) / t_i)      (rectangular 1 x t_j)
+ * B   = floor(sqrt(t_j))                             (square B x B)
+ * </pre>
+ *
+ * both aligned down to the cache line. Thesis example: 25 MiB L3 of
+ * doubles = 3,276,800 elements, Cores=4, Refs=3, t_i=1000 gives
+ * t_j = 3276 -&gt; 3272 aligned; B = 57 -&gt; 56 aligned.
+ */
 public class NTSelectionAlgo implements TileSizeSelectionAlgo {
 
-    private long cacheSizeInBits;
-    private int cacheLineSizeInBits;
+    private final long cacheSizeInBytes;
+    private final int cacheLineSizeInBytes;
+    private final int cores;
 
-    public NTSelectionAlgo(long cacheSizeInKiB, int cacheLineSizeInBytes) {
-        super();
-        this.cacheSizeInBits = cacheSizeInKiB * 1024 * 8; // convert to bits
-        this.cacheLineSizeInBits = cacheLineSizeInBytes * 8; // convert to bits
+    public NTSelectionAlgo(long cacheSizeInKiB, int cacheLineSizeInBytes, int cores) {
+        this.cacheSizeInBytes = cacheSizeInKiB * 1024;
+        this.cacheLineSizeInBytes = cacheLineSizeInBytes;
+        this.cores = cores;
+    }
+
+    /** Pure model: rectangular tile width t_j (elements), unaligned. */
+    public static long rectTile(long cacheElems, int cores, long refs, long ti) {
+        if (ti <= 0) {
+            return 0;
+        }
+        long free = cacheElems - (long) cores * refs;
+        if (free <= 0) {
+            return 0;
+        }
+        return free / ti;
+    }
+
+    /** Pure model: square tile edge B (elements), unaligned. */
+    public static long squareTile(long cacheElems, int cores, long refs, long ti) {
+        long tj = rectTile(cacheElems, cores, refs, ti);
+        return tj <= 0 ? 0 : (long) Math.floor(Math.sqrt((double) tj));
     }
 
     @Override
-    public Map<Expression, Expression> getTileSizes(ForLoop loopNest) {
-        Map<Expression, Map<ArrayAccess, Expression>> dataLoadedPerLoopIndexVar = getDataLoadedPerArrayAccessPerLoop(
-                loopNest);
-
-        Map<Expression, Expression> tileSizes = new LinkedHashMap<>();
-
-        // Get the outermost loop index variable
-        DFIterator<ForLoop> loopIter = new DFIterator<>(loopNest, ForLoop.class);
-        if (!loopIter.hasNext()) {
-            return new HashMap<>();
+    public Map<Expression, Expression> getTileSizes(ForLoop loopNest,
+            List<ForLoop> browseOrder) {
+        Map<Expression, Expression> sizes = new LinkedHashMap<>();
+        if (browseOrder.isEmpty()) {
+            return sizes;
         }
 
-        while (loopIter.hasNext()) {
-            ForLoop loop = loopIter.next();
-            Expression outerIndexVar = LoopTools.getIndexVariable(loop);
+        int elemBytes = elementBytes(loopNest);
+        long cacheElems = cacheSizeInBytes / elemBytes;
+        int lineElems = Math.max(cacheLineSizeInBytes / elemBytes, 1);
+        long refs = ReuseOrderAnalyzer.referenceGroups(loopNest).size();
 
-            // Get all array accesses for the outermost loop
-            Map<ArrayAccess, Expression> accessDataMap = dataLoadedPerLoopIndexVar.get(outerIndexVar);
+        // t_i: trip count of the loop that spans the resident reference's
+        // row dimension (first subscript); outermost loop as fallback.
+        ForLoop rowLoop = residentRowLoop(loopNest);
+        Expression tiExpr = ReuseOrderAnalyzer.tripCount(
+                rowLoop != null ? rowLoop : loopNest);
 
-            // Sum the data loaded per iteration of the outermost loop
-            Expression totalDataLoaded = new IntegerLiteral(0);
-            for (Expression dataLoaded : accessDataMap.values()) {
-                totalDataLoaded = Symbolic.add(totalDataLoaded, dataLoaded);
-            }
-
-            // Compute the maximum tile size for the outermost loop such that
-            // totalDataLoaded * tileSize <= cacheSizeInBits
-            // tileSize <= cacheSizeInBits / totalDataLoaded
-            Expression maxTileSize = Symbolic.divide(new IntegerLiteral(cacheSizeInBits), totalDataLoaded);
-
-            // Align the tile size to the cache line size (in bits)
-            // tileSizeInBits = maxTileSize * totalDataLoaded
-            // tileSizeInBitsAligned = (tileSizeInBits / cacheLineSizeInBits) *
-            // cacheLineSizeInBits
-            Expression tileSizeInBits = Symbolic.multiply(maxTileSize, totalDataLoaded);
-            Expression alignedTileSizeInBits = Symbolic.multiply(
-                    Symbolic.divide(tileSizeInBits, new IntegerLiteral(cacheLineSizeInBits)),
-                    new IntegerLiteral(cacheLineSizeInBits));
-            // alignedTileSize = alignedTileSizeInBits / totalDataLoaded
-            Expression alignedTileSize = Symbolic.divide(alignedTileSizeInBits, totalDataLoaded);
-
-            // Return a map with the outermost loop index variable and the computed tile
-            // size
-            if (alignedTileSize instanceof IntegerLiteral) {
-                long tileValue = ((IntegerLiteral) alignedTileSize).getValue();
-                if (tileValue <= 1)
-                    continue;
-            }
-            tileSizes.put(outerIndexVar, alignedTileSize);
+        if (browseOrder.size() == 1 && !(tiExpr instanceof IntegerLiteral)) {
+            // Rectangular tile, symbolic-safe:
+            // t_j = (C - cores*refs) / t_i
+            Expression free = new IntegerLiteral(cacheElems - cores * refs);
+            Expression tj = Symbolic.divide(free, tiExpr);
+            put(sizes, browseOrder.get(0), tj);
+            return sizes;
         }
 
-        return tileSizes;
+        long dimFallback = LRWSelectionAlgo.residentLeadingDimension(loopNest);
+        long ti = chooseTripForTiles(tiExpr, dimFallback);
+
+        long raw = (browseOrder.size() == 1)
+                ? rectTile(cacheElems, cores, refs, ti)
+                : squareTile(cacheElems, cores, refs, ti);
+        long aligned = BalancedTileCalculator.alignDown(raw, lineElems);
+        if (aligned <= 1) {
+            PrintTools.printlnDebug("[NT] tile size degenerate (" + aligned
+                    + "); not tiling");
+            return sizes;
+        }
+        for (ForLoop loop : browseOrder) {
+            put(sizes, loop, new IntegerLiteral(aligned));
+        }
+        return sizes;
+    }
+
+    private static void put(Map<Expression, Expression> sizes, ForLoop loop,
+            Expression value) {
+        Expression indexVar = LoopTools.getIndexVariable(loop);
+        if (indexVar != null) {
+            sizes.put(indexVar, value);
+        }
+    }
+
+    /** Loop whose index appears in the resident reference's first (row)
+     * subscript. */
+    static ForLoop residentRowLoop(ForLoop nest) {
+        ArrayAccess resident = ReuseOrderAnalyzer.residentReference(nest);
+        if (resident == null || resident.getNumIndices() == 0) {
+            return null;
+        }
+        Expression rowSubscript = resident.getIndex(0);
+        for (ForLoop loop : ReuseOrderAnalyzer.nestLoops(nest)) {
+            Expression idx = LoopTools.getIndexVariable(loop);
+            if (idx == null) {
+                continue;
+            }
+            DFIterator<Expression> parts = new DFIterator<>(rowSubscript, Expression.class);
+            while (parts.hasNext()) {
+                if (parts.next().toString().equals(idx.toString())) {
+                    return loop;
+                }
+            }
+        }
+        return null;
     }
 
     /**
-     * For each loop index variable, computes the amount of data loaded per array
-     * access
-     * per iteration of that loop. Returns a map: indexVar -> (arrayAccess ->
-     * dataLoadedInBits).
+     * Trip count used for the NT capacity model. Prefer a folded literal
+     * trip; else a compile-time array dimension (PolyBench {@code (N+0)});
+     * else {@code 1} so the square tile is capacity-bound. Never the
+     * reuse-ranking stand-in {@code 1000}, which collapses tiles to one
+     * cache line after alignment.
      */
-    public Map<Expression, Map<ArrayAccess, Expression>> getDataLoadedPerArrayAccessPerLoop(ForLoop loopNest) {
-        Map<Expression, Map<ArrayAccess, Expression>> result = new HashMap<>();
-
-        // Collect all index variables in the loop nest (outermost to innermost)
-        List<ForLoop> loops = new ArrayList<>();
-        List<Expression> indexVars = new ArrayList<>();
-        DFIterator<ForLoop> loopIter = new DFIterator<>(loopNest, ForLoop.class);
-        while (loopIter.hasNext()) {
-            ForLoop loop = loopIter.next();
-            loops.add(loop);
-            indexVars.add(LoopTools.getIndexVariable(loop));
+    public static long chooseTripForTiles(Expression tiExpr, long literalDimFallback) {
+        long trip = LiteralExpr.asPositiveLiteral(tiExpr);
+        if (trip > 0) {
+            return trip;
         }
-
-        // Find all array accesses in the loop nest
-        List<ArrayAccess> arrayAccesses = new ArrayList<>();
-        DFIterator<ArrayAccess> accessIter = new DFIterator<>(loopNest, ArrayAccess.class);
-        while (accessIter.hasNext()) {
-            arrayAccesses.add(accessIter.next());
+        if (literalDimFallback > 0) {
+            return literalDimFallback;
         }
+        return 1L;
+    }
 
-        // For each loop index variable (from outermost to innermost)
-        for (int idx = 0; idx < indexVars.size(); idx++) {
-            Expression indexVar = indexVars.get(idx);
-            Map<ArrayAccess, Expression> accessDataMap = new HashMap<>();
-
-            for (ArrayAccess access : arrayAccesses) {
-                List<Expression> indices = access.getIndices();
-                int typeSizeBits = ArrayUtils.getTypeSizeInBits(access);
-
-                // Find the position of indexVar in the subscript list
-                int pos = -1;
-                for (int k = 0; k < indices.size(); k++) {
-                    if (indices.get(k).toString().equals(indexVar.toString())) {
-                        pos = k;
-                        break;
-                    }
-                }
-
-                // If indexVar is not used in this access, assume only one element loaded per
-                // iteration
-                if (pos == -1) {
-                    accessDataMap.put(access, new IntegerLiteral(typeSizeBits));
-                    continue;
-                }
-
-                // For row-major, the fastest-changing index is the last subscript
-                // For each iteration of indexVar, all inner dimensions (pos+1 to end) are
-                // traversed
-                // So, per iteration of indexVar, the number of elements loaded is the product
-                // of inner dimensions
-                Expression numElementsExpr = new IntegerLiteral(1);
-
-                for (int k = pos + 1; k < indices.size(); k++) {
-                    // Try to get the trip count of the inner loop corresponding to this index
-                    if (k < loops.size()) {
-                        ForLoop innerLoop = loops.get(k);
-                        Expression tripCount = computeTripCount(innerLoop);
-                        numElementsExpr = Symbolic.multiply(numElementsExpr, tripCount);
-                    } else {
-                        numElementsExpr = Symbolic.multiply(numElementsExpr, new IntegerLiteral(1));
-                    }
-                }
-
-                Expression dataLoadedExpr = Symbolic.multiply(new IntegerLiteral(typeSizeBits), numElementsExpr);
-                accessDataMap.put(access, dataLoadedExpr);
+    /** Element size in bytes from the nest's first array access (8 when
+     * unavailable). */
+    public static int elementBytes(ForLoop nest) {
+        DFIterator<ArrayAccess> iter = new DFIterator<>(nest, ArrayAccess.class);
+        if (iter.hasNext()) {
+            int bits = ArrayUtils.getTypeSizeInBits(iter.next());
+            if (bits > 0) {
+                return Math.max(bits / 8, 1);
             }
-            result.put(indexVar, accessDataMap);
         }
-        return result;
+        return 8;
     }
-
-    public static Map<Expression, Object> getLoopCountsPerLoop(Loop loopNest) {
-        Map<Expression, Object> loopTripCountMap = new LinkedHashMap<>();
-
-        DFIterator<ForLoop> loopIterator = new DFIterator<>(loopNest, ForLoop.class);
-
-        while (loopIterator.hasNext()) {
-            ForLoop loop = loopIterator.next();
-            Expression tripCount = computeTripCount(loop);
-
-            Expression loopIndex = LoopTools.getIndexVariable(loop);
-            loopTripCountMap.put(loopIndex, tripCount);
-        }
-
-        return loopTripCountMap;
-    }
-
-    private static Expression computeTripCount(ForLoop loop) {
-        Expression initExpr = LoopTools.getLowerBoundExpression(loop);
-        Expression boundExpr = LoopTools.getUpperBoundExpression(loop);
-        Expression incExpr = LoopTools.getIncrementExpression(loop);
-
-        return computeTripCount(initExpr, boundExpr, incExpr);
-    }
-
-    /**
-     * Computes the trip count given init, bound, and increment expressions.
-     * 
-     * @param init  Initial value of loop.
-     * @param bound Upper bound of loop.
-     * @param inc   Increment expression.
-     * @return Trip count as Long (if computable) or a symbolic Expression.
-     */
-    private static Expression computeTripCount(Expression init, Expression bound, Expression inc) {
-        try {
-            if (init instanceof IntegerLiteral && bound instanceof IntegerLiteral && inc instanceof IntegerLiteral) {
-                long initVal = ((IntegerLiteral) init).getValue();
-                long boundVal = ((IntegerLiteral) bound).getValue();
-                long incVal = ((IntegerLiteral) inc).getValue();
-
-                if (incVal == 0)
-                    return new IntegerLiteral(0L);
-
-                long tripCount = Math.max((boundVal - initVal + incVal - 1) / incVal, 0);
-                return new IntegerLiteral(tripCount);
-            } else {
-                // Return symbolic trip count expression: (bound - init) / inc
-                Expression numerator = Symbolic.subtract(bound, init);
-                return Symbolic.divide(numerator, inc);
-            }
-        } catch (Exception e) {
-            return new IntegerLiteral(0); // Fallback for any parsing issue
-        }
-    }
-
 }

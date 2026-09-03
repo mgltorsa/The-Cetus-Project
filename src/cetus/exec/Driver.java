@@ -13,6 +13,7 @@ import cetus.hir.Tools;
 import cetus.transforms.*;
 import cetus.transforms.paw_tiling.ParallelAwareTiling;
 import cetus.transforms.paw_tiling.TilingParams;
+import cetus.transforms.paw_tiling.instrumentation.PAPIInstrumentation;
 
 import java.io.*;
 import java.util.Arrays;
@@ -402,6 +403,27 @@ public class Driver {
                 TilingParams.FIXED_TILE_SIZE_PARAM_NAME,
                 null,
                 "" + TilingParams.FIXED_TILE_SIZE_DESCR);
+
+        options.add(options.TRANSFORM,
+                TilingParams.TILING_LEVEL_PARAM_NAME,
+                null,
+                "" + TilingParams.DEFAULT_TILING_LEVEL,
+                "N",
+                TilingParams.TILING_LEVEL_PARAM_DESCR);
+
+        options.add(options.TRANSFORM,
+                PAPIInstrumentation.PASS_NAME,
+                null,
+                null,
+                "N",
+                PAPIInstrumentation.PASS_CMD_DESCR);
+
+        options.add(options.TRANSFORM,
+                PAPIInstrumentation.EVENTS_PARAM_NAME,
+                null,
+                PAPIInstrumentation.DEFAULT_EVENTS,
+                "S",
+                PAPIInstrumentation.EVENTS_PARAM_DESCR);
 
     }
 
@@ -900,6 +922,13 @@ public class Driver {
 
         if (getOptionValue("ompGen") != null && !getOptionValue("ompGen").equals("0")) {
             CodeGenPass.run(new ompGen(program));
+        }
+
+        // PAPI instrumentation wraps the final (tiled + OpenMP) regions, so
+        // it must run after ompGen.
+        if (getOptionValue(PAPIInstrumentation.PASS_NAME) != null
+                && !getOptionValue(PAPIInstrumentation.PASS_NAME).equals("0")) {
+            TransformPass.run(new PAPIInstrumentation(program));
         }
 
         /*

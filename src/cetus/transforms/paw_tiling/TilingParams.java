@@ -35,6 +35,12 @@ public class TilingParams {
     public final static String SELECTION_ALGORITHM_PARAM_NAME = "selection";
     public final static String FIXED_TILE_SIZE_PARAM_NAME = "tileSizes";
     public final static String TILING_PROFITABILITY_PARAM_NAME = "tile-profitability";
+    public final static String TILING_LEVEL_PARAM_NAME = "tilingLevel";
+
+    public final static String TILING_LEVEL_PARAM_DESCR = "Tiling depth d: maximum number of loops"
+            + " to strip-mine per nest, browsed in decreasing-reuse order."
+            + " 0 (default) means the full nest depth.";
+    public final static int DEFAULT_TILING_LEVEL = 0;
     
     public final static String TILING_PROFITABILITY_PARAM_DESCR = "To check profitability of tiling and then generate the tiled code.\n'0' - Disable\n'1' - Enable (Default)";
     public final static String DEFAULT_TILING_PROFITABILITY = "1";
@@ -62,6 +68,7 @@ public class TilingParams {
     private int numOfProcessors = DEFAULT_PROCESSORS;
     private long cacheSizeInKB = DEFAULT_CACHE_SIZE_IN_KB;
     private int cacheLineInBytes = DEFAULT_CACHE_ALIGNMENT_IN_BYTES;
+    private int tilingLevel = DEFAULT_TILING_LEVEL;
     private boolean enableTilingProfitability = true;
     private TileSizeSelectionAlgo tileSizeSelectionAlgo;
     private SelectionAlgorithm selectionAlgo;
@@ -98,6 +105,19 @@ public class TilingParams {
         }
 
         maxIterationsToParallelize = MAX_ITERATIONS_TO_PARALLELIZE;
+
+        try {
+            String tilingLevelStr = Driver.getOptionValue(TILING_LEVEL_PARAM_NAME);
+            if (tilingLevelStr != null) {
+                tilingLevel = Integer.parseInt(tilingLevelStr);
+            }
+            assert tilingLevel >= 0;
+        } catch (Exception e) {
+            PrintTools.print("Error on setting tiling level. The default value: "
+                    + DEFAULT_TILING_LEVEL + " (full depth) will be used", 2);
+            tilingLevel = DEFAULT_TILING_LEVEL;
+        }
+
         
         String fixedTileSizeOption = Driver.getOptionValue(FIXED_TILE_SIZE_PARAM_NAME);
         if(fixedTileSizeOption != null) {
@@ -127,20 +147,42 @@ public class TilingParams {
     }
 
     private TileSizeSelectionAlgo createSelectionAlgo(SelectionAlgorithm algorithm) {
-        long cacheSizeInKiB = 1024; // Example cache size in KiB
-        int cacheLineSizeInBytes = 64; // Example cache line size in bytes
-
+        // Serial tiling (-paw_tiling=0) still runs this pass, but only one
+        // thread executes the nest: do not shrink tiles as if P cores shared L3.
+        int sizeCores = tileSizeModelCores();
         switch (algorithm) {
             case LRW:
-                return new LRWSelectionAlgo(cacheSizeInKiB, cacheLineSizeInBytes);
+                return new LRWSelectionAlgo(cacheSizeInKB, cacheLineInBytes, sizeCores);
             case NT:
-                return new NTSelectionAlgo(cacheSizeInKiB, cacheLineSizeInBytes);
+                return new NTSelectionAlgo(cacheSizeInKB, cacheLineInBytes, sizeCores);
             case FIXED:
                 return new FixedSizesAlgo(fixedTileSizes);
             default:
                 PrintTools.printlnDebug("Unknown tile size selection algorithm: " + algorithm);
-                return new LRWSelectionAlgo(cacheSizeInKiB, cacheLineSizeInBytes);
+                return new LRWSelectionAlgo(cacheSizeInKB, cacheLineInBytes, sizeCores);
         }
+    }
+
+    /**
+     * Cores used in NT/LRW capacity models. Parallel-aware tiling uses
+     * {@code -cores}; serial tiling always models one thread.
+     */
+    int tileSizeModelCores() {
+        String paw = Driver.getOptionValue("paw_tiling");
+        if ("0".equals(paw)) {
+            return 1;
+        }
+        return numOfProcessors;
+    }
+
+    /** Tiling depth d; 0 means "full nest depth". */
+    public int getTilingLevel() {
+        return tilingLevel;
+    }
+
+    /** Test hook: drops the singleton so option changes are re-read. */
+    public static void reset() {
+        _instance = null;
     }
 
     public int getNumOfProcessors() {

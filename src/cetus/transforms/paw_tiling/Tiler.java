@@ -8,6 +8,7 @@ import java.util.Map.Entry;
 
 import cetus.analysis.DependenceVector;
 import cetus.analysis.LoopTools;
+import cetus.transforms.paw_tiling.legality.DirectionVectorLemmas;
 import cetus.hir.AssignmentExpression;
 import cetus.hir.AssignmentOperator;
 import cetus.hir.BinaryExpression;
@@ -36,15 +37,12 @@ public class Tiler {
     public static final String IN_TILE_PREFIX = "cetus_tile_";
 
     public static ForLoop getFarthestAncestorLoop(ForLoop loop) {
-        ForLoop currentAncestor = IRTools.getAncestorOfType(loop, ForLoop.class);
         ForLoop farthestAncestor = loop;
-        do {
+        ForLoop currentAncestor = IRTools.getAncestorOfType(loop, ForLoop.class);
+        while (currentAncestor != null) {
+            farthestAncestor = currentAncestor;
             currentAncestor = IRTools.getAncestorOfType(currentAncestor, ForLoop.class);
-            if (currentAncestor != null) {
-                farthestAncestor = currentAncestor;
-            }
-        } while (currentAncestor != null);
-
+        }
         return farthestAncestor;
     }
 
@@ -61,8 +59,10 @@ public class Tiler {
         ForLoop crossStripLoop = (ForLoop) stripminedLoops[0];
         ForLoop inStripLoop = (ForLoop) stripminedLoops[1];
 
-        // get farthest ancestor loop
-        ForLoop farthestAncestorLoop = getFarthestAncestorLoop(targetLoop);
+        // The nest root passed in is the tiling unit. Walking to the
+        // program-outermost for-loop would pull in an enclosing imperfect
+        // loop (e.g. syrk's i around a perfect k,j subnest) and clone it.
+        ForLoop farthestAncestorLoop = outermostLoop;
         ForLoop newForLoop = crossStripLoop.clone(false);
         newForLoop.setBody(farthestAncestorLoop.clone(false));
 
@@ -91,150 +91,52 @@ public class Tiler {
 
     }
 
+    /**
+     * Rewrites the direction vectors for the strip-mined nest by Lemma 4
+     * (strip-mining) and Lemma 1 (reordering), delegating to
+     * {@link DirectionVectorLemmas}. All-nil vectors carry no information
+     * and are dropped.
+     */
     public static List<DependenceVector> calculateAfterTilingDVs(List<DependenceVector> originalDVs,
             Loop newLoopNest,
             Loop inStripLoop, Loop crossStripLoop) {
 
-        List<DependenceVector> newDVS = new ArrayList<>();
+        List<DependenceVector> informative = new ArrayList<>();
         for (DependenceVector originalDV : originalDVs) {
-            LinkedHashMap<Loop,Integer> directions =  originalDV.getDirectionVector();
+            LinkedHashMap<Loop, Integer> directions = originalDV.getDirectionVector();
             boolean allNils = true;
-            for (Entry<Loop,Integer> directionEntry : directions.entrySet()) {
-                if(directionEntry.getValue() != DependenceVector.nil){
-                    allNils=false;
+            for (Entry<Loop, Integer> directionEntry : directions.entrySet()) {
+                if (directionEntry.getValue() != DependenceVector.nil) {
+                    allNils = false;
                     break;
                 }
             }
-            if(allNils) continue;
-
-            List<DependenceVector> postTilingDvs = calculateAfterTilingDV(originalDV, newLoopNest, inStripLoop, crossStripLoop);
-            newDVS.addAll(postTilingDvs);
+            if (!allNils) {
+                informative.add(originalDV);
+            }
         }
-        return newDVS;
+
+        List<Loop> newOrder = new ArrayList<>();
+        new DFIterator<Loop>(newLoopNest, Loop.class).forEachRemaining(newOrder::add);
+
+        // Resolve the actual loop objects inside the new nest by index name.
+        Loop actualIn = lookupByName(newOrder, inStripLoop);
+        Loop actualCross = lookupByName(newOrder, crossStripLoop);
+
+        // The in-strip loop keeps the original loop's index symbol, so it
+        // stands in for the strip-mined target when reading old directions.
+        return DirectionVectorLemmas.stripMine(informative, actualIn,
+                actualCross, actualIn, newOrder);
     }
 
-    public static List<DependenceVector> calculateAfterTilingDV(DependenceVector originalDV,
-            Loop newLoopNest,
-            Loop inStripLoop, Loop crossStripLoop) {
-        List<DependenceVector> newDVS = new ArrayList<>();
-
-        LinkedList<Loop> nestedLoops = new LinkedList<>();
-        new DFIterator<Loop>(newLoopNest, Loop.class).forEachRemaining(nestedLoops::add);
-
-        // real object references inside nested loops
-        Loop actualInStripLoop = inStripLoop;
-        Loop actualCrossStripLoop = crossStripLoop;
-
-        try {
-            String inStripSymbol = LoopTools.getLoopIndexSymbol(inStripLoop).getSymbolName();
-            String crossStripSymbol = LoopTools.getLoopIndexSymbol(crossStripLoop).getSymbolName();
-
-            // find real object references inside nested loops
-            for (Loop loop : nestedLoops) {
-
-                String loopSymbol = LoopTools.getLoopIndexSymbol(loop).getSymbolName();
-
-                if (loopSymbol.equals(inStripSymbol)) {
-                    actualInStripLoop = loop;
-                    continue;
-                }
-                if (loopSymbol.equals(crossStripSymbol)) {
-                    actualCrossStripLoop = loop;
-                    continue;
-                }
-
-                if (actualInStripLoop != null && actualCrossStripLoop != null) {
-                    break;
-                }
-
-            }
-
-            DependenceVector newBaseDV = new DependenceVector(nestedLoops);
-
-            int direction = findOriginalDirection(originalDV, actualInStripLoop);
-
-            switch (direction) {
-                case DependenceVector.equal: {
-                    DependenceVector newDV = new DependenceVector(newBaseDV);
-                    newDV.setDirection(actualInStripLoop, DependenceVector.equal);
-                    newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-                    
-                    newDVS.add(newDV);
-                    break;
-                }
-
-                case DependenceVector.greater: {
-                    DependenceVector newDV = new DependenceVector(newBaseDV);
-                    newDV.setDirection(actualInStripLoop, DependenceVector.greater);
-                    newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-
-                    DependenceVector newDV2 = new DependenceVector(newBaseDV);
-                    newDV2.setDirection(actualInStripLoop, DependenceVector.any);
-                    newDV2.setDirection(actualCrossStripLoop, DependenceVector.greater);
-
-                    newDVS.add(newDV);
-                    newDVS.add(newDV2);
-
-                    break;
-                }
-
-                case DependenceVector.less: {
-                    DependenceVector newDV = new DependenceVector(newBaseDV);
-                    newDV.setDirection(actualInStripLoop, DependenceVector.less);
-                    newDV.setDirection(actualCrossStripLoop, DependenceVector.equal);
-
-                    DependenceVector newDV2 = new DependenceVector(newBaseDV);
-                    newDV2.setDirection(actualInStripLoop, DependenceVector.any);
-                    newDV2.setDirection(actualCrossStripLoop, DependenceVector.less);
-
-                    newDVS.add(newDV);
-                    newDVS.add(newDV2);
-                    break;
-                }
-
-                default:
-                    break;
-            }
-
-            for (Loop loop : nestedLoops) {
-                if (loop == actualInStripLoop || loop == actualCrossStripLoop) {
-                    continue;
-                }
-
-                for (DependenceVector newDV : newDVS) {
-                    int originalDirection = findOriginalDirection(originalDV, loop);
-                    newDV.setDirection(loop, originalDirection);
-                }
-            }
-
-            return newDVS;
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println(e);
-        }
-        return null;
-    }
-
-    private static int findOriginalDirection(DependenceVector dv, Loop targetLoop) {
-        int direction = DependenceVector.nil;
-
-        String loopSymbol = LoopTools.getLoopIndexSymbol(targetLoop).getSymbolName();
-
-        Loop origLoop = null;
-
-        for (Loop loop : dv.getLoops()) {
-            String origLoopSymbol = LoopTools.getLoopIndexSymbol(loop).getSymbolName();
-            if (origLoopSymbol.equals(loopSymbol)) {
-                origLoop = loop;
-                break;
+    private static Loop lookupByName(List<Loop> loops, Loop target) {
+        String name = DirectionVectorLemmas.loopName(target);
+        for (Loop loop : loops) {
+            if (name != null && name.equals(DirectionVectorLemmas.loopName(loop))) {
+                return loop;
             }
         }
-
-        if (origLoop != null) {
-            direction = dv.getDirection(origLoop);
-        }
-
-        return direction;
+        return target;
     }
 
     public static ForLoop[] stripmining(SymbolTable symbolTable, ForLoop loop, Expression tileSize)
@@ -261,7 +163,9 @@ public class Tiler {
 
         Expression strip = tileSize.clone();
 
-        if (!(strip instanceof IntegerLiteral)) {
+        // An IDExpression tile size is an already-declared size variable
+        // (e.g. the browser's per-nest symbolic size): use it directly.
+        if (!(strip instanceof IntegerLiteral) && !(strip instanceof IDExpression)) {
             IDExpression stripIdentifier = VariableDeclarationUtils.getIdentifier(symbolTable,
                     IN_TILE_PREFIX + loopSymbol.getSymbolName());
 
