@@ -194,6 +194,7 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
     public static long sharedL3SquareCap(long cacheElems, int cores, long refs,
             long leadingDim) {
         long ti = leadingDim > 0 ? leadingDim : 1;
-        return NTSelectionAlgo.squareTile(cacheElems, cores, refs, ti);
+        // One thread's share of the cache, as in NT.
+        return NTSelectionAlgo.squareTile(cacheElems / Math.max(cores, 1), 1, refs, ti);
     }
 }

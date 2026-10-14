@@ -1,6 +1,8 @@
 package cetus.transforms.paw_tiling;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
@@ -30,6 +32,8 @@ import cetus.hir.CetusAnnotation;
 import cetus.hir.CodeAnnotation;
 import cetus.hir.CompoundStatement;
 import cetus.hir.DFIterator;
+import cetus.hir.DataFlowTools;
+import cetus.hir.ExpressionStatement;
 import cetus.hir.Expression;
 import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
@@ -98,6 +102,15 @@ public class ParallelAwareTiling extends TransformPass {
                     "#define ROUND(x) ((int)((x)+0.5))\n");
 
     private TilingParams tilingParams;
+
+    /**
+     * Nests whose parallel loop was moved inward by the stride interchange,
+     * with the index of that loop. Such a nest is tiled on that one loop so
+     * that its tile loop, outermost and balanced over the threads, carries
+     * the parallelism again (one fork for the nest, not one per outer
+     * iteration).
+     */
+    private final Map<ForLoop, String> coarsen = new IdentityHashMap<>();
 
     public ParallelAwareTiling(Program program) {
         super(program);
@@ -274,20 +287,18 @@ public class ParallelAwareTiling extends TransformPass {
                     || boundsDependOn(inner, outer)) {
                 continue;
             }
-            LinkedList<Loop> nestLoops = new LinkedList<>(chain);
-            EmptyDvAuditor.Result audit = EmptyDvAuditor.audit(outer, nestLoops,
-                    program.getDDGraph());
-            if (audit.status == EmptyDvAuditor.Status.SUSPECT) {
-                continue;
-            }
             // Read against the swapped order, the vectors are those of the
             // interchanged nest (reordering lemma).
-            List<Loop> swapped = new ArrayList<>();
-            swapped.add(inner);
-            swapped.add(outer);
-            if (!DirectionVectorLemmas.isLegal(audit.dvs, swapped)) {
+            if (!interchangeIsLegal(outer, inner)) {
                 continue;
             }
+            boolean outerParallel = outer.containsAnnotation(CetusAnnotation.class, "parallel");
+            boolean innerParallel = inner.containsAnnotation(CetusAnnotation.class, "parallel");
+            boolean enclosed = enclosingParallelLoop(outer) != null;
+            if (!isSerialTiling() && !enclosed && innerParallel && !outerParallel) {
+                continue; // would need the annotations exchanged; not handled
+            }
+            String parallelIndex = LoopTools.getIndexVariable(outer).toString();
             swapHeaders(outer, inner);
             if (ReuseDistance.innermostLoopStrides(outer)) {
                 swapHeaders(outer, inner); // no better: the other loop strides too
@@ -295,6 +306,12 @@ public class ParallelAwareTiling extends TransformPass {
             }
             PrintTools.printlnDebug("[paw] stride interchange in "
                     + LoopTools.getLoopName(outer));
+            // A parallel mark belongs to an index, and the indices have
+            // changed places.
+            stripParallelAnnotations(outer);
+            if (!isSerialTiling() && !enclosed && outerParallel) {
+                coarsen.put(outer, parallelIndex);
+            }
             changed = true;
         }
         return changed;
@@ -317,6 +334,287 @@ public class ParallelAwareTiling extends TransformPass {
         a.getInitialStatement().swapWith(b.getInitialStatement());
         a.getCondition().swapWith(b.getCondition());
         a.getStep().swapWith(b.getStep());
+    }
+
+    /** Marks the loop of {@code nest} that iterates {@code index} parallel. */
+    private static void restoreInnerParallel(ForLoop nest, String index) {
+        if (nest.getParent() == null) {
+            return; // replaced by its tiled version
+        }
+        for (ForLoop loop : ReuseOrderAnalyzer.nestLoops(nest)) {
+            Expression indexVar = LoopTools.getIndexVariable(loop);
+            if (indexVar != null && indexVar.toString().equals(index)
+                    && !loop.containsAnnotation(CetusAnnotation.class, "parallel")) {
+                CetusAnnotation note = new CetusAnnotation();
+                note.put("parallel", "true");
+                loop.annotate(note);
+            }
+        }
+    }
+
+    /**
+     * Loop distribution of an imperfect parallel loop. A loop L that the
+     * parallelizer proved parallel carries no dependence between its
+     * iterations, so its body can be split into consecutive loops, one per
+     * group of statements, in the original order. It is done when one group
+     * is an inner loop that walks an array down a column while L would walk
+     * it along a row: that group becomes a perfect pair (L, inner), which the
+     * stride interchange can reorder (covariance, correlation, gramschmidt,
+     * trmm).
+     *
+     * Left alone: a loop with no enclosing loop (it is a measured region), a
+     * loop with a privatized array or a reduction, a body with anything but
+     * expression statements and loops, and a body in which a scalar carries
+     * a value from one group to another.
+     *
+     * @return true when at least one loop was distributed
+     */
+    private boolean distributeParallelLoops() {
+        List<ForLoop> parallel = new ArrayList<>();
+        DFIterator<ForLoop> iter = new DFIterator<>(program, ForLoop.class);
+        while (iter.hasNext()) {
+            ForLoop loop = iter.next();
+            if (loop.containsAnnotation(CetusAnnotation.class, "parallel")
+                    && IRTools.getAncestorOfType(loop, ForLoop.class) != null
+                    && enclosingParallelLoop(loop) == null
+                    && !isSetupOrTeardown(loop) && LoopTools.isCanonical(loop)
+                    && isUnitAscending(loop)) {
+                parallel.add(loop);
+            }
+        }
+        boolean changed = false;
+        for (ForLoop loop : parallel) {
+            List<List<Statement>> groups = distributionGroups(loop);
+            if (groups == null) {
+                continue;
+            }
+            CompoundStatement parent = (CompoundStatement) loop.getParent();
+            for (List<Statement> group : groups) {
+                CompoundStatement body = new CompoundStatement();
+                for (Statement stmt : group) {
+                    // Moved, not cloned: a clone would also copy the
+                    // statements' annotations, and that copy does not print.
+                    ((CompoundStatement) loop.getBody()).removeStatement(stmt);
+                    body.addStatement(stmt);
+                }
+                ForLoop piece = new ForLoop(loop.getInitialStatement().clone(),
+                        loop.getCondition().clone(), loop.getStep().clone(), body);
+                for (CetusAnnotation note : loop.getAnnotations(CetusAnnotation.class)) {
+                    // Annotation.clone() turns the symbol sets into lists,
+                    // which CetusAnnotation cannot print.
+                    CetusAnnotation copy = new CetusAnnotation();
+                    for (Map.Entry<String, Object> entry : note.entrySet()) {
+                        Object value = entry.getValue();
+                        copy.put(entry.getKey(), value instanceof java.util.Collection
+                                ? new LinkedHashSet<Object>((java.util.Collection<?>) value)
+                                : value);
+                    }
+                    piece.annotate(copy);
+                }
+                parent.addStatementBefore(loop, piece);
+            }
+            parent.removeStatement(loop);
+            PrintTools.printlnDebug("[paw] distributed parallel loop into "
+                    + groups.size() + " loops");
+            changed = true;
+        }
+        return changed;
+    }
+
+    /**
+     * The statement groups {@code loop} is to be split into, or null when
+     * it is not to be distributed.
+     */
+    private List<List<Statement>> distributionGroups(ForLoop loop) {
+        if (!(loop.getParent() instanceof CompoundStatement)
+                || !(loop.getBody() instanceof CompoundStatement)
+                || loop.containsAnnotation(CetusAnnotation.class, "reduction")) {
+            return null;
+        }
+        for (String key : new String[] {"private", "firstprivate", "lastprivate"}) {
+            CetusAnnotation note = loop.getAnnotation(CetusAnnotation.class, key);
+            if (note != null && note.get(key) instanceof Set) {
+                for (Object symbol : (Set<?>) note.get(key)) {
+                    if (!(symbol instanceof Symbol) || !SymbolTools.isScalar((Symbol) symbol)) {
+                        return null; // a private array carries values through the body
+                    }
+                }
+            }
+        }
+        List<List<Statement>> groups = new ArrayList<>();
+        List<Statement> run = null;
+        for (Traversable child : loop.getBody().getChildren()) {
+            if (child instanceof ForLoop) {
+                run = null;
+                List<Statement> alone = new ArrayList<>();
+                alone.add((Statement) child);
+                groups.add(alone);
+            } else if (child instanceof ExpressionStatement) {
+                if (run == null) {
+                    run = new ArrayList<>();
+                    groups.add(run);
+                }
+                run.add((Statement) child);
+            } else {
+                return null;
+            }
+        }
+        if (groups.size() < 2) {
+            return null;
+        }
+
+        // One group must be the loop the distribution is done for.
+        String outerIndex = LoopTools.getIndexVariable(loop).toString();
+        boolean wanted = false;
+        for (List<Statement> group : groups) {
+            if (!(group.get(0) instanceof ForLoop)) {
+                continue;
+            }
+            ForLoop inner = (ForLoop) group.get(0);
+            Expression innerIndex = LoopTools.getIndexVariable(inner);
+            if (innerIndex != null && nestDepth(inner) == 1 && LoopTools.isCanonical(inner)
+                    && isUnitAscending(inner) && !boundsDependOn(inner, loop)
+                    && strides(inner, innerIndex.toString()) && !strides(inner, outerIndex)
+                    && interchangeIsLegal(loop, inner)) {
+                wanted = true;
+            }
+        }
+        if (!wanted) {
+            return null;
+        }
+
+        // A scalar written in the body may be met in one group only, unless
+        // it is the index of that group's own loop, which the loop sets.
+        Map<Symbol, Integer> home = new LinkedHashMap<>();
+        Set<Symbol> written = new LinkedHashSet<>();
+        for (List<Statement> group : groups) {
+            for (Statement stmt : group) {
+                for (Symbol symbol : DataFlowTools.getDefSymbol(stmt)) {
+                    if (SymbolTools.isScalar(symbol)) {
+                        written.add(symbol);
+                    }
+                }
+            }
+        }
+        for (int g = 0; g < groups.size(); g++) {
+            List<Statement> group = groups.get(g);
+            Symbol ownIndex = group.get(0) instanceof ForLoop
+                    ? LoopTools.getLoopIndexSymbol((ForLoop) group.get(0)) : null;
+            for (Statement stmt : group) {
+                Set<Symbol> met = new LinkedHashSet<>(DataFlowTools.getDefSymbol(stmt));
+                met.addAll(DataFlowTools.getUseSymbol(stmt));
+                for (Symbol symbol : met) {
+                    if (!written.contains(symbol) || symbol == ownIndex) {
+                        continue;
+                    }
+                    Integer first = home.put(symbol, g);
+                    if (first != null && first != g) {
+                        return null;
+                    }
+                }
+            }
+        }
+        return groups;
+    }
+
+    /**
+     * The dependence vectors that constrain a reordering of {@code nestLoops},
+     * a nest that sits under other loops. The range test of Cetus reports
+     * each vector over all the loops around a statement. A vector whose
+     * leftmost non-{@code =} entry belongs to an enclosing loop is carried
+     * by that loop: its source and sink lie in different iterations of it,
+     * so no reordering inside one iteration can reverse it. Read on the nest
+     * loops alone, such a vector looks like a constraint (trmm, lu: the
+     * read of {@code B[k][j]}, {@code k > i}, against the write of
+     * {@code B[i][j]}), and the nest was left alone. Those vectors are
+     * dropped here. A {@code *} at an enclosing loop proves nothing and the
+     * vector is kept.
+     *
+     * @return null when the dependence graph has no vector for the nest
+     */
+    private List<DependenceVector> vectorsInsideEnclosingLoops(ForLoop nestRoot,
+            List<? extends Loop> nestLoops) {
+        LinkedList<Loop> enclosing = new LinkedList<>();
+        Traversable up = nestRoot.getParent();
+        while (up != null && !(up instanceof Procedure)) {
+            if (up instanceof ForLoop) {
+                enclosing.addFirst((Loop) up);
+            }
+            up = up.getParent();
+        }
+        LinkedList<Loop> all = new LinkedList<>(enclosing);
+        all.addAll(nestLoops);
+        List<DependenceVector> matrix = program.getDDGraph() == null ? null
+                : program.getDDGraph().getDirectionMatrix(all);
+        if (matrix == null) {
+            return null;
+        }
+        List<DependenceVector> kept = new ArrayList<>();
+        boolean any = false;
+        for (DependenceVector row : matrix) {
+            if (!EmptyDvAuditor.isNestUsable(row, new ArrayList<Loop>(nestLoops))) {
+                continue;
+            }
+            any = true;
+            boolean carriedOutside = false;
+            for (Loop loop : enclosing) {
+                int d = DirectionVectorLemmas.directionOf(row, loop);
+                if (d == DependenceVector.nil || d == DependenceVector.equal) {
+                    continue;
+                }
+                carriedOutside = d == DependenceVector.less;
+                break;
+            }
+            if (!carriedOutside) {
+                // Projected on the nest: the tiler accepts no other loop.
+                DependenceVector inNest = new DependenceVector(
+                        new LinkedList<Loop>(nestLoops));
+                for (Loop loop : nestLoops) {
+                    inNest.setDirection(loop, DirectionVectorLemmas.directionOf(row, loop));
+                }
+                kept.add(inNest);
+            }
+        }
+        return any ? kept : null;
+    }
+
+    /**
+     * Whether {@code inner} may be moved outside {@code outer}, judged on the
+     * dependence vectors that involve both loops. Asked before a loop is
+     * distributed: a distribution that the interchange cannot follow only
+     * multiplies the parallel regions (trmm).
+     */
+    private boolean interchangeIsLegal(ForLoop outer, ForLoop inner) {
+        LinkedList<Loop> pair = new LinkedList<>();
+        pair.add(outer);
+        pair.add(inner);
+        List<Loop> swapped = new ArrayList<>();
+        swapped.add(inner);
+        swapped.add(outer);
+        List<DependenceVector> inside = vectorsInsideEnclosingLoops(outer, pair);
+        if (inside != null) {
+            return DirectionVectorLemmas.isLegal(inside, swapped);
+        }
+        EmptyDvAuditor.Result audit = EmptyDvAuditor.audit(outer, pair,
+                program.getDDGraph());
+        if (audit.status == EmptyDvAuditor.Status.SUSPECT) {
+            return false;
+        }
+        return DirectionVectorLemmas.isLegal(audit.dvs, swapped);
+    }
+
+    /** True when {@code index} sits in a subscript other than the last one. */
+    private static boolean strides(ForLoop loop, String index) {
+        DFIterator<ArrayAccess> accesses = new DFIterator<>(loop, ArrayAccess.class);
+        while (accesses.hasNext()) {
+            ArrayAccess access = accesses.next();
+            for (int d = 0; d < access.getNumIndices() - 1; d++) {
+                if (ReuseOrderAnalyzer.expressionContainsName(access.getIndex(d), index)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean hasValidTilingAncestor(ForLoop loop) {
@@ -412,10 +710,18 @@ public class ParallelAwareTiling extends TransformPass {
         }
 
         // LoopInterchange looks only at nests rooted at an outermost loop.
-        if (!isPostParallelTiling() && interchangeInnerSubnests()) {
-            // The dependence graph is keyed by loop objects whose headers
-            // have just been swapped.
-            AnalysisPass.run(new DDTDriver(program));
+        if (!isPostParallelTiling()) {
+            // Imperfect parallel loops are split first, so that the loop
+            // around a striding inner loop becomes a perfect pair.
+            if (!isSerialTiling() && distributeParallelLoops()) {
+                LoopTools.addLoopName(program, true);
+                AnalysisPass.run(new DDTDriver(program));
+            }
+            if (interchangeInnerSubnests()) {
+                // The dependence graph is keyed by loop objects whose
+                // headers have just been swapped.
+                AnalysisPass.run(new DDTDriver(program));
+            }
         }
 
         PrintTools.printlnDebug("Starting parallel-aware tiling transformation...");
@@ -431,6 +737,9 @@ public class ParallelAwareTiling extends TransformPass {
 
         List<ForLoop> validLoops = filterValidLoopNests();
         if (validLoops.isEmpty()) {
+            for (Map.Entry<ForLoop, String> entry : coarsen.entrySet()) {
+                restoreInnerParallel(entry.getKey(), entry.getValue());
+            }
             // Interchange already ran. A parallel annotation can now sit on
             // a loop that writes locations its index does not cover.
             revokeStaleParallelism();
@@ -440,8 +749,9 @@ public class ParallelAwareTiling extends TransformPass {
 
         List<TiledLoop> updatedLoops = new ArrayList<>();
         for (ForLoop targetLoop : validLoops) {
+            TiledLoop newLoop = null;
             try {
-                TiledLoop newLoop = processLoop(targetLoop);
+                newLoop = processLoop(targetLoop);
                 if (newLoop != null) {
                     updatedLoops.add(newLoop);
                 }
@@ -450,8 +760,18 @@ public class ParallelAwareTiling extends TransformPass {
                 PrintTools.print(
                         String.format("Error processing loop %s: %s", targetLoop.toString(), e.getMessage()), 0);
             }
+            if (newLoop == null && coarsen.containsKey(targetLoop)) {
+                // The nest stays as interchanged. Its parallel loop is the
+                // inner one now; mark it, so that the parallelism is kept.
+                restoreInnerParallel(targetLoop, coarsen.get(targetLoop));
+            }
         }
 
+        for (Map.Entry<ForLoop, String> entry : coarsen.entrySet()) {
+            if (!validLoops.contains(entry.getKey())) {
+                restoreInnerParallel(entry.getKey(), entry.getValue());
+            }
+        }
         reRunPasses();
         for (TiledLoop forLoop : updatedLoops) {
             setupTileSizesMetadata(forLoop);
@@ -480,6 +800,14 @@ public class ParallelAwareTiling extends TransformPass {
         originalDvs = dvAudit.dvs;
         PrintTools.printlnDebug("[paw] Phase1 DVs status=" + dvAudit.status
                 + " (" + dvAudit.detail + ")");
+        if (coarsen.containsKey(targetLoop)) {
+            // The interchange of this nest was judged without the vectors
+            // that an enclosing loop carries; its tile loop is judged alike.
+            List<DependenceVector> inside = vectorsInsideEnclosingLoops(targetLoop, nestLoops);
+            if (inside != null) {
+                originalDvs = inside;
+            }
+        }
 
         List<ForLoop> reuseOrder = ReuseOrderAnalyzer.reuseOrder(targetLoop);
         int depth = tilingParams.getTilingLevel() <= 0
@@ -488,11 +816,29 @@ public class ParallelAwareTiling extends TransformPass {
         List<ForLoop> candidates = reuseOrder.subList(0,
                 Math.min(depth, reuseOrder.size()));
 
-        // Raw tile sizes for the browse candidates (method M).
-        Map<Expression, Expression> rawSizes = tilingParams
-                .getTileSizeSelectionAlgo().getTileSizes(targetLoop, candidates);
+        // Coarsening: tile only the loop that holds the parallelism, with a
+        // raw size of the whole loop; balancing turns that into one tile per
+        // thread and the tile loop, hoisted outermost, becomes the parallel
+        // loop.
+        String coarsenIndex = isSerialTiling() ? null : coarsen.get(targetLoop);
+        Map<Expression, Expression> rawSizes;
         List<ForLoop> browseCandidates = new ArrayList<>();
-        for (ForLoop candidate : candidates) {
+        if (coarsenIndex != null) {
+            rawSizes = new LinkedHashMap<>();
+            for (ForLoop candidate : ReuseOrderAnalyzer.nestLoops(targetLoop)) {
+                Expression indexVar = LoopTools.getIndexVariable(candidate);
+                if (indexVar != null && indexVar.toString().equals(coarsenIndex)) {
+                    rawSizes.put(indexVar, ReuseOrderAnalyzer.tripCount(candidate));
+                    browseCandidates.add(candidate);
+                }
+            }
+            candidates = new ArrayList<>(browseCandidates);
+        } else {
+            // Raw tile sizes for the browse candidates (method M).
+            rawSizes = tilingParams
+                    .getTileSizeSelectionAlgo().getTileSizes(targetLoop, candidates);
+        }
+        for (ForLoop candidate : coarsenIndex != null ? new ArrayList<ForLoop>() : candidates) {
             Expression indexVar = LoopTools.getIndexVariable(candidate);
             Expression raw = indexVar == null ? null : rawSizes.get(indexVar);
             if (raw == null || "1".equals(raw.toString())) {
@@ -529,7 +875,7 @@ public class ParallelAwareTiling extends TransformPass {
         // bounds and shortens the unit-stride runs (the k,j subnest of
         // gemm). A nest whose innermost loop strides across lines is kept,
         // because there a tile restores line reuse (syrk, syr2k).
-        if (tilingParams.isEnableReuseCheck()) {
+        if (coarsenIndex == null && tilingParams.isEnableReuseCheck()) {
             int bytes = NTSelectionAlgo.elementBytes(targetLoop);
             long share = tilingParams.getCacheSizeInKB() * 1024L / bytes
                     / Math.max(tilingParams.getNumOfProcessors(), 1);
@@ -559,7 +905,9 @@ public class ParallelAwareTiling extends TransformPass {
                 tilingParams.getCacheSizeInKB());
         Expression footprint = calculateDataFullSize(targetLoop);
 
-        StaticProfitability.Decision decision = tilingParams.isEnableTilingProfitability()
+        StaticProfitability.Decision decision = coarsenIndex != null
+                ? StaticProfitability.Decision.PROVE_TILED
+                : tilingParams.isEnableTilingProfitability()
                 ? StaticProfitability.decide(targetLoop, totalIterations,
                         cacheElems, footprint,
                         tilingParams.getMaxIterationsToParallelize())
@@ -593,6 +941,12 @@ public class ParallelAwareTiling extends TransformPass {
                 : DirectionVectorLemmas.outermostParallelLoop(browse.dvs, browse.order);
         String parallelName = parallelLoop == null ? null
                 : DirectionVectorLemmas.loopName(parallelLoop);
+        if (coarsenIndex != null && (parallelName == null
+                || !parallelName.equals(coarsenIndex + Tiler.CROSS_TILE_SUFFIX))) {
+            PrintTools.printlnDebug("[paw] coarsening: the tile loop of "
+                    + coarsenIndex + " is not the parallel loop; nest untouched");
+            return null;
+        }
 
         int elemBytes = NTSelectionAlgo.elementBytes(targetLoop);
         int lineElems = Math.max(tilingParams.getCacheLineInBytes() / elemBytes, 1);

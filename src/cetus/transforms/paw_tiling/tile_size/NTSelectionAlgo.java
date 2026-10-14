@@ -17,16 +17,20 @@ import cetus.utils.ArrayUtils;
 
 /**
  * Naive Tile (NT) method -- shared-cache capacity model (thesis
- * sec. 3.3.2). All quantities are in array elements; {@code CacheSize} is
- * the TOTAL shared L3 capacity (a single resident copy of the
- * highest-reuse reference serves all cores) and the {@code Cores x Refs}
- * term reserves capacity for the per-thread access streams:
+ * sec. 3.3.2). All quantities are in array elements. Each of the P threads
+ * works in its own tile at the same time, so a tile gets one thread's share
+ * of the shared cache, CacheSize / P, and the Refs term reserves room in
+ * that share for the thread's other access streams:
  *
  * <pre>
- * t_i * t_j + Cores * Refs &lt;= CacheSize
- * t_j = floor((CacheSize - Cores * Refs) / t_i)      (rectangular 1 x t_j)
+ * t_i * t_j + Refs &lt;= CacheSize / P
+ * t_j = floor((CacheSize / P - Refs) / t_i)          (rectangular 1 x t_j)
  * B   = floor(sqrt(t_j))                             (square B x B)
  * </pre>
+ *
+ * Serial tiling passes P = 1 and keeps the whole cache. (Until 2026-10-14
+ * the model used the whole cache for every thread and subtracted
+ * Cores * Refs, which made the size practically independent of P.)
  *
  * both aligned down to the cache line. Thesis example: 25 MiB L3 of
  * doubles = 3,276,800 elements, Cores=4, Refs=3, t_i=1000 gives
@@ -71,7 +75,8 @@ public class NTSelectionAlgo implements TileSizeSelectionAlgo {
         }
 
         int elemBytes = elementBytes(loopNest);
-        long cacheElems = cacheSizeInBytes / elemBytes;
+        // One thread's share of the shared cache.
+        long cacheElems = cacheSizeInBytes / elemBytes / Math.max(cores, 1);
         int lineElems = Math.max(cacheLineSizeInBytes / elemBytes, 1);
         long refs = ReuseOrderAnalyzer.referenceGroups(loopNest).size();
 
@@ -83,8 +88,8 @@ public class NTSelectionAlgo implements TileSizeSelectionAlgo {
 
         if (browseOrder.size() == 1 && !(tiExpr instanceof IntegerLiteral)) {
             // Rectangular tile, symbolic-safe:
-            // t_j = (C - cores*refs) / t_i
-            Expression free = new IntegerLiteral(cacheElems - cores * refs);
+            // t_j = (C/P - refs) / t_i
+            Expression free = new IntegerLiteral(cacheElems - refs);
             Expression tj = Symbolic.divide(free, tiExpr);
             put(sizes, browseOrder.get(0), tj);
             return sizes;
@@ -94,8 +99,8 @@ public class NTSelectionAlgo implements TileSizeSelectionAlgo {
         long ti = chooseTripForTiles(tiExpr, dimFallback);
 
         long raw = (browseOrder.size() == 1)
-                ? rectTile(cacheElems, cores, refs, ti)
-                : squareTile(cacheElems, cores, refs, ti);
+                ? rectTile(cacheElems, 1, refs, ti)
+                : squareTile(cacheElems, 1, refs, ti);
         long aligned = BalancedTileCalculator.alignDown(raw, lineElems);
         if (aligned <= 1) {
             PrintTools.printlnDebug("[NT] tile size degenerate (" + aligned
