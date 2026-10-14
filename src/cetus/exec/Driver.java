@@ -941,14 +941,7 @@ public class Driver {
          * 
          */
         if (getOptionValue("loop_interchange") != null) {
-            // As in ParallelAwareTiling: LoopInterchange throws on some nests
-            // (seidel-2d: IndexOutOfBounds in ReusabilityAnalysis); the
-            // program is then left in its original order.
-            try {
-                TransformPass.run(new LoopInterchange(program));
-            } catch (Exception e) {
-                PrintTools.println("[LoopInterchange] failed, loops left in their order: " + e, 0);
-            }
+            TransformPass.run(new LoopInterchange(program));
         }
 
         if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {
