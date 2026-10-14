@@ -284,6 +284,10 @@ public class ParallelAwareTiling extends TransformPass {
         for (ForLoop outer : pairs) {
             List<ForLoop> chain = ReuseOrderAnalyzer.nestLoops(outer);
             ForLoop inner = chain.get(1);
+            Expression innerIdx = LoopTools.getIndexVariable(inner);
+            if (innerIdx == null || !stridedDataExceedsShare(outer, innerIdx.toString())) {
+                continue; // the column walk stays in cache: nothing to gain
+            }
             if (!ReuseDistance.innermostLoopStrides(outer) || !isUnitAscending(outer)
                     || !isUnitAscending(inner) || boundsDependOn(outer, inner)
                     || boundsDependOn(inner, outer)) {
@@ -489,6 +493,7 @@ public class ParallelAwareTiling extends TransformPass {
             if (innerIndex != null && nestDepth(inner) == 1 && LoopTools.isCanonical(inner)
                     && isUnitAscending(inner) && !boundsDependOn(inner, loop)
                     && strides(inner, innerIndex.toString()) && !strides(inner, outerIndex)
+                    && stridedDataExceedsShare(inner, innerIndex.toString())
                     && interchangeIsLegal(loop, inner)) {
                 wanted = true;
             }
@@ -615,6 +620,45 @@ public class ParallelAwareTiling extends TransformPass {
             return false;
         }
         return DirectionVectorLemmas.isLegal(audit.dvs, swapped);
+    }
+
+    /**
+     * Whether the arrays that {@code index} walks across cache lines (its
+     * index sits in a subscript other than the last) are larger than one
+     * thread's share of the cache. Only then does a stride interchange pay:
+     * an array that fits the share is reused from cache anyway, and the
+     * interchange would move the loop that accumulates into a scalar or a
+     * register outward, turning that accumulation into a memory update per
+     * iteration (doitgen: C4 is 583 KB, PAW ran at 1.87x against 8.28x for
+     * parallel-only code). An array whose declared size is not a literal is
+     * assumed to be large.
+     */
+    private boolean stridedDataExceedsShare(ForLoop loop, String index) {
+        SymbolTable symbols = VariableDeclarationUtils.getVariableDeclarationSpace(loop.getParent());
+        long share = tilingParams.getCacheSizeInKB() * 1024L
+                / Math.max(isSerialTiling() ? 1 : tilingParams.getNumOfProcessors(), 1);
+        int bytes = NTSelectionAlgo.elementBytes(loop);
+        long total = 0;
+        Set<String> seen = new LinkedHashSet<>();
+        DFIterator<ArrayAccess> accesses = new DFIterator<>(loop, ArrayAccess.class);
+        while (accesses.hasNext()) {
+            ArrayAccess access = accesses.next();
+            boolean strided = false;
+            for (int d = 0; d < access.getNumIndices() - 1; d++) {
+                strided |= ReuseOrderAnalyzer.expressionContainsName(access.getIndex(d), index);
+            }
+            Expression name = access.getArrayName();
+            if (!strided || !(name instanceof IDExpression) || !seen.add(name.toString())) {
+                continue;
+            }
+            Expression size = declaredArraySize(symbols, (IDExpression) name);
+            long elems = size == null ? -1 : LiteralExpr.asPositiveLiteral(Symbolic.simplify(size));
+            if (elems <= 0) {
+                return true;
+            }
+            total += elems * bytes;
+        }
+        return total > share;
     }
 
     /** True when {@code index} sits in a subscript other than the last one. */
