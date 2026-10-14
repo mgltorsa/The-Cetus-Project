@@ -447,7 +447,9 @@ public class OmpParser {
             if (str == null) {
                 str = new String(get_token());
             } else {
-                str.concat((" " + get_token()));
+                // String.concat returns the result; dropping it kept only the
+                // first token of the expression ("if(()" for a nested one).
+                str = str.concat(" " + get_token());
             }
         }
         match(")");

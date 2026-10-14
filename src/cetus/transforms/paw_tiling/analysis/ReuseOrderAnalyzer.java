@@ -1,5 +1,12 @@
 package cetus.transforms.paw_tiling.analysis;
 
+import cetus.hir.ArraySpecifier;
+import cetus.hir.Declaration;
+import cetus.hir.SymbolTable;
+import cetus.hir.Traversable;
+import cetus.hir.VariableDeclarator;
+import cetus.transforms.paw_tiling.tile_size.LiteralExpr;
+import cetus.utils.VariableDeclarationUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -192,7 +199,7 @@ public class ReuseOrderAnalyzer {
         return false;
     }
 
-    private static boolean expressionContainsName(Expression expr, String name) {
+    public static boolean expressionContainsName(Expression expr, String name) {
         if (expr instanceof IDExpression && expr.toString().equals(name)) {
             return true;
         }
@@ -252,6 +259,76 @@ public class ReuseOrderAnalyzer {
         } catch (Exception e) {
             return new IntegerLiteral(0);
         }
+    }
+
+    /**
+     * Trip count of {@code loop} for size decisions: the literal trip when
+     * the bounds fold, else the largest declared dimension that the loop's
+     * index subscripts in the nest (an upper bound, since the index stays
+     * inside the array). -1 when neither is a compile-time constant.
+     */
+    public static long estimatedTrip(ForLoop loop, ForLoop nest) {
+        long literal = LiteralExpr.asPositiveLiteral(tripCount(loop));
+        if (literal > 0) {
+            return literal;
+        }
+        Expression indexVar = LoopTools.getIndexVariable(loop);
+        if (indexVar == null) {
+            return -1;
+        }
+        String name = indexVar.toString();
+        long best = -1;
+        DFIterator<ArrayAccess> iter = new DFIterator<>(nest, ArrayAccess.class);
+        while (iter.hasNext()) {
+            ArrayAccess access = iter.next();
+            for (int i = 0; i < access.getNumIndices(); i++) {
+                if (expressionContainsName(access.getIndex(i), name)) {
+                    best = Math.max(best, declaredDimension(access, i, nest));
+                }
+            }
+        }
+        return best;
+    }
+
+    /** Declared size of dimension {@code dim} of the accessed array, or -1
+     * when the array has no such declared dimension or it is not a literal. */
+    public static long declaredDimension(ArrayAccess access, int dim, ForLoop nest) {
+        try {
+            Expression arrayName = access.getArrayName();
+            if (!(arrayName instanceof IDExpression)) {
+                return -1;
+            }
+            SymbolTable symbols = VariableDeclarationUtils
+                    .getVariableDeclarationSpace(nest.getParent());
+            Declaration declaration = symbols.findSymbol((IDExpression) arrayName);
+            if (declaration == null) {
+                return -1;
+            }
+            for (Traversable childObj : declaration.getChildren()) {
+                if (!(childObj instanceof VariableDeclarator)) {
+                    continue;
+                }
+                VariableDeclarator child = (VariableDeclarator) childObj;
+                if (!child.getSymbolName().equals(arrayName.toString())) {
+                    continue;
+                }
+                List<Expression> dims = new ArrayList<>();
+                @SuppressWarnings("unchecked")
+                List<ArraySpecifier> specs = child.getArraySpecifiers();
+                for (ArraySpecifier spec : specs) {
+                    for (int j = 0; j < spec.getNumDimensions(); j++) {
+                        dims.add(spec.getDimension(j));
+                    }
+                }
+                if (dims.size() != access.getNumIndices()) {
+                    return -1;
+                }
+                return LiteralExpr.asPositiveLiteral(dims.get(dim));
+            }
+        } catch (Exception e) {
+            PrintTools.printlnDebug("[paw-reuse] dimension lookup failed: " + e);
+        }
+        return -1;
     }
 
     /** Numeric trip count for ranking; symbolic trips use a default. */

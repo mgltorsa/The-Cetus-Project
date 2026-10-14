@@ -619,15 +619,17 @@ public class Reduction extends AnalysisPass {
                     } else if (reduction_op.equals("*")) {
                         lhse_removed_rhse = Symbolic.divide(rhse, lhse);
                        
+                    } else if (reduction_op.equals("&&") || reduction_op.equals("||") ||
+                               reduction_op.equals("&") || reduction_op.equals("|") ||
+                               reduction_op.equals("^")) {
+                        lhse_removed_rhse = Symbolic.subtract(rhse, lhse, true);
                     } else {
-                        // Added support for logical and bitwise operators : {&& , || , & ,| , ^}
-                       
-                        if(reduction_op.equals("&&") || reduction_op.equals("||") ||
-                           reduction_op.equals("&") || reduction_op.equals("|") ||
-                           reduction_op.equals("^") )
-
-                            lhse_removed_rhse = Symbolic.subtract(rhse, lhse,true);  
-                       
+                        // Member access (".") and other operators are not
+                        // OpenMP reductions. A compound-literal update such as
+                        // csum = (dcomplex){csum.real + ..., csum.imag + ...}
+                        // used to be recorded as reduction(. : csum), which
+                        // gcc rejects.
+                        return;
                     }
                 } else {
                    

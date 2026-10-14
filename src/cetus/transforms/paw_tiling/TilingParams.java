@@ -44,6 +44,11 @@ public class TilingParams {
     
     public final static String TILING_PROFITABILITY_PARAM_DESCR = "To check profitability of tiling and then generate the tiled code.\n'0' - Disable\n'1' - Enable (Default)";
     public final static String DEFAULT_TILING_PROFITABILITY = "1";
+
+    public final static String REUSE_CHECK_PARAM_NAME = "tile-reuse-check";
+    public final static String REUSE_CHECK_PARAM_DESCR = "Leave a nest untiled when the data it touches between two uses"
+            + " of the same element already fits in one thread's share of the cache (cacheSize / cores).\n'0' - Disable\n'1' - Enable (Default)";
+    public final static String DEFAULT_REUSE_CHECK = "1";
     
 
     public final static String CORES_PARAM_DESCR = "To define the number of cores to be used for parallel aware tiling. (default=4). \nThis data is used for load balancing across cores.";
@@ -70,6 +75,7 @@ public class TilingParams {
     private int cacheLineInBytes = DEFAULT_CACHE_ALIGNMENT_IN_BYTES;
     private int tilingLevel = DEFAULT_TILING_LEVEL;
     private boolean enableTilingProfitability = true;
+    private boolean enableReuseCheck = true;
     private TileSizeSelectionAlgo tileSizeSelectionAlgo;
     private SelectionAlgorithm selectionAlgo;
     private int[] fixedTileSizes;
@@ -144,6 +150,10 @@ public class TilingParams {
         if (enableTilingProfitabilityStr != null) {
             enableTilingProfitability = Integer.parseInt(enableTilingProfitabilityStr) >= 1;
         }
+        String reuseCheckStr = Driver.getOptionValue(REUSE_CHECK_PARAM_NAME);
+        if (reuseCheckStr != null) {
+            enableReuseCheck = Integer.parseInt(reuseCheckStr) >= 1;
+        }
     }
 
     private TileSizeSelectionAlgo createSelectionAlgo(SelectionAlgorithm algorithm) {
@@ -169,7 +179,9 @@ public class TilingParams {
      */
     int tileSizeModelCores() {
         String paw = Driver.getOptionValue("paw_tiling");
-        if ("0".equals(paw)) {
+        // 0 = serial tiling, 2 = tiling after parallelization without
+        // parallel awareness: both size a tile for one thread.
+        if ("0".equals(paw) || "2".equals(paw)) {
             return 1;
         }
         return numOfProcessors;
@@ -203,6 +215,10 @@ public class TilingParams {
 
     public int getMaxIterationsToParallelize() {
         return maxIterationsToParallelize;
+    }
+
+    public boolean isEnableReuseCheck() {
+        return enableReuseCheck;
     }
 
     public boolean isEnableTilingProfitability() {

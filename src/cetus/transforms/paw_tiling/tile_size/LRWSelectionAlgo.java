@@ -27,6 +27,9 @@ import cetus.utils.VariableDeclarationUtils;
  * caches B0 is used unchanged: safe but conservative (a=1 is the worst
  * case). When N is not statically known, falls back to the NT square tile.
  *
+ * Parallel-aware tiling calls FindB with the per-thread share of the cache,
+ * C/P, because P tiles are resident at once; serial tiling passes P = 1.
+ *
  * Fidelity: this implementation follows the original paper (and the
  * corrected thesis Algorithm 3.2): {@code di = addr div N; dj = addr mod
  * N; if dj > N/2 then di += 1; dj = N - dj}. The nearest-row adjustment
@@ -98,7 +101,19 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
                     .getTileSizes(loopNest, browseOrder);
         }
 
-        long b0 = findB(n, cacheElems);
+        // Parallel awareness of the size itself. With P threads each one
+        // works in its own tile at the same time, so P blocks have to stay in
+        // the shared cache together: a block may neither interfere with
+        // itself nor overflow one thread's share. FindB is therefore run for
+        // a cache of C/P elements. With the whole cache, an array that fits
+        // alone (N*N <= C) gets B0 = N and is not tiled at all, although P
+        // threads streaming through it do not fit. Serial tiling has
+        // cores = 1 and keeps the whole cache.
+        long share = cacheElems / Math.max(cores, 1);
+        long b0 = findB(n, share);
+        PrintTools.printlnDebug("[LRW] N=" + n + " cache=" + cacheElems
+                + " elements, share for " + cores + " threads=" + share
+                + ", B0=" + b0);
         if (cores > 1) {
             long refs = Math.max(1L, ReuseOrderAnalyzer.referenceGroups(loopNest).size());
             long shared = sharedL3SquareCap(cacheElems, cores, refs, n);
@@ -179,6 +194,7 @@ public class LRWSelectionAlgo implements TileSizeSelectionAlgo {
     public static long sharedL3SquareCap(long cacheElems, int cores, long refs,
             long leadingDim) {
         long ti = leadingDim > 0 ? leadingDim : 1;
-        return NTSelectionAlgo.squareTile(cacheElems, cores, refs, ti);
+        // One thread's share of the cache, as in NT.
+        return NTSelectionAlgo.squareTile(cacheElems / Math.max(cores, 1), 1, refs, ti);
     }
 }

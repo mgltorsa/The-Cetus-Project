@@ -20,10 +20,13 @@ import cetus.hir.ForLoop;
 import cetus.hir.IDExpression;
 import cetus.hir.IRTools;
 import cetus.hir.IntegerLiteral;
+import cetus.hir.UnaryExpression;
+import cetus.hir.UnaryOperator;
 import cetus.hir.Loop;
 import cetus.hir.MinMaxExpression;
 import cetus.hir.PragmaAnnotation;
 import cetus.hir.PrintTools;
+import cetus.hir.Procedure;
 import cetus.hir.Statement;
 import cetus.hir.Symbol;
 import cetus.hir.SymbolTable;
@@ -80,6 +83,63 @@ public class Tiler {
         Expression indexVar = LoopTools.getIndexVariable(newTiledLoop);
         newTiledLoop.setTileSize(indexVar, tileSize);
         return newTiledLoop;
+    }
+
+    /** True when the loop index moves downward (i--, i -= ..., i = i - ...). */
+    private static boolean isDescending(ForLoop loop) {
+        Expression step = loop.getStep();
+        if (step instanceof UnaryExpression) {
+            UnaryOperator op = ((UnaryExpression) step).getOperator();
+            return op == UnaryOperator.PRE_DECREMENT || op == UnaryOperator.POST_DECREMENT;
+        }
+        if (step instanceof AssignmentExpression) {
+            AssignmentExpression assign = (AssignmentExpression) step;
+            AssignmentOperator op = assign.getOperator();
+            if (op == AssignmentOperator.SUBTRACT) {
+                return true;
+            }
+            Expression rhs = assign.getRHS();
+            if (op == AssignmentOperator.ADD && rhs instanceof IntegerLiteral
+                    && ((IntegerLiteral) rhs).getValue() < 0) {
+                return true;
+            }
+            if (op == AssignmentOperator.NORMAL && rhs instanceof BinaryExpression
+                    && ((BinaryExpression) rhs).getOperator() == BinaryOperator.SUBTRACT) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Last in-tile index of a countdown loop. For {@code i >= B} with step -1
+     * the tile that starts at {@code cross} ends at {@code max(B, cross-T+1)}.
+     * For a strict {@code i > B} it ends at {@code max(B, cross-T)}.
+     */
+    private static Expression descendingTileEnd(Expression cross, Expression tile, BinaryOperator cond) {
+        Expression back = Symbolic.subtract(cross.clone(), tile.clone());
+        if (cond == BinaryOperator.COMPARE_GE || cond == BinaryOperator.COMPARE_LE) {
+            return Symbolic.add(back, new IntegerLiteral(1));
+        }
+        return back;
+    }
+
+    /**
+     * Function scope when {@code symbolTable} sits inside a procedure.
+     * Tile indexes must be visible at every pragma in that function.
+     * Procedure.addDeclaration adds a parameter, so the local goes on the body.
+     */
+    private static SymbolTable procedureScope(SymbolTable symbolTable) {
+        Procedure proc = null;
+        if (symbolTable instanceof Procedure) {
+            proc = (Procedure) symbolTable;
+        } else if (symbolTable instanceof Traversable) {
+            proc = IRTools.getAncestorOfType((Traversable) symbolTable, Procedure.class);
+        }
+        if (proc != null && proc.getBody() != null) {
+            return proc.getBody();
+        }
+        return symbolTable;
     }
 
     public static boolean isCrossStripLoop(ForLoop loop) {
@@ -152,13 +212,17 @@ public class Tiler {
 
         Symbol loopSymbol = LoopTools.getLoopIndexSymbol(loop);
 
-        IDExpression crossIndex = VariableDeclarationUtils
-                .getIdentifier(symbolTable, loopSymbol.getSymbolName() + loopSymbol.getSymbolName());
-
+        // Declare the tile index in the enclosing function body. An inner
+        // compound statement is not in scope at an OpenMP pragma on the tiled
+        // nest, and Procedure.addDeclaration would turn the index into a parameter.
+        String crossName = loopSymbol.getSymbolName() + CROSS_TILE_SUFFIX;
+        SymbolTable declScope = procedureScope(symbolTable);
+        IDExpression crossIndex = VariableDeclarationUtils.getIdentifier(declScope, crossName);
         if (crossIndex == null) {
-            crossIndex = VariableDeclarationUtils.declareVariable(symbolTable,
-                    loopSymbol.getSymbolName() + CROSS_TILE_SUFFIX);
-
+            crossIndex = VariableDeclarationUtils.getIdentifier(symbolTable, crossName);
+        }
+        if (crossIndex == null) {
+            crossIndex = VariableDeclarationUtils.declareVariable(declScope, crossName);
         }
 
         Expression strip = tileSize.clone();
@@ -274,10 +338,22 @@ public class Tiler {
             throw new Exception("LHS is not a symbol");
         }
 
-        Expression tileSize = Symbolic.add(stripExpr, newIndexVariable);
         Expression loopUpperBound = condRHS.clone();
-
-        MinMaxExpression minMaxExp = new MinMaxExpression(true, loopUpperBound, tileSize);
+        boolean descending = isDescending(loop);
+        Expression tileEnd;
+        if (descending) {
+            tileEnd = descendingTileEnd(stripExpr, newIndexVariable, condOperator);
+        } else {
+            // j <= B covers cross .. cross+T-1. Using cross+T repeats the
+            // first index of the next tile. j < B already excludes that index.
+            tileEnd = Symbolic.add(stripExpr, newIndexVariable);
+            if (condOperator == BinaryOperator.COMPARE_LE) {
+                tileEnd = Symbolic.subtract(tileEnd, new IntegerLiteral(1));
+            }
+        }
+        // Ascending tiles stop at MIN(bound, cross+tile[-1]). Descending
+        // tiles stop at MAX(bound, cross-tile[+1]).
+        MinMaxExpression minMaxExp = new MinMaxExpression(!descending, loopUpperBound, tileEnd);
 
         Expression newLoopCondition = new BinaryExpression(
                 condLHS.clone(), condOperator, minMaxExp);
@@ -346,7 +422,11 @@ public class Tiler {
 
         Expression stepLHS = newIndexVariable;
         Expression stepRHS = stripExpr;
-        Expression newLoopStepExp = new AssignmentExpression(stepLHS.clone(), AssignmentOperator.ADD, stepRHS.clone());
+        // A countdown loop (i--) must step the tile index backward. Adding a
+        // positive tile size walks off the high end of the array.
+        AssignmentOperator stepOp = isDescending(loop)
+                ? AssignmentOperator.SUBTRACT : AssignmentOperator.ADD;
+        Expression newLoopStepExp = new AssignmentExpression(stepLHS.clone(), stepOp, stepRHS.clone());
 
         Statement newLoopInitStm = loop.getInitialStatement().clone();
         ((Expression) newLoopInitStm.getChildren().get(0)).swapWith(newLoopInitExp);

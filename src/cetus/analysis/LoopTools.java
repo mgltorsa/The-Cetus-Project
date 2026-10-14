@@ -912,29 +912,21 @@ public class LoopTools {
      * @return true if private, else false
      */
     public static boolean isPrivate(Symbol s, Loop l) {
-        Annotatable an = (Annotatable) l;
-        CetusAnnotation note = an.getAnnotation(CetusAnnotation.class, "private");
-        if (s.toString().contains("ii")) {
-            System.out.println("PODEROSO");
+        // A loop can carry more than one cetus annotation with a privacy
+        // clause: privatization runs again after tiling and adds a second
+        // one that lists the tile indices. Reading only the first made the
+        // tile indices look shared.
+        List<CetusAnnotation> notes =
+                ((Annotatable) l).getAnnotations(CetusAnnotation.class);
+        if (notes == null) {
+            return false;
         }
-        if (note != null) {
-            Set<Symbol> private_symbols = note.get("private");
-            if (private_symbols.contains(s)) {
-                return true;
-            }
-        }
-        note = an.getAnnotation(CetusAnnotation.class, "lastprivate");
-        if (note != null) {
-            Set<Symbol> private_symbols = note.get("lastprivate");
-            if (private_symbols.contains(s)) {
-                return true;
-            }
-        }
-        note = an.getAnnotation(CetusAnnotation.class, "firstprivate");
-        if (note != null) {
-            Set<Symbol> private_symbols = note.get("firstprivate");
-            if (private_symbols.contains(s)) {
-                return true;
+        for (CetusAnnotation note : notes) {
+            for (String key : new String[] {"private", "lastprivate", "firstprivate"}) {
+                Object symbols = note.get(key);
+                if (symbols instanceof Set && ((Set<?>) symbols).contains(s)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -1036,9 +1028,7 @@ public class LoopTools {
                     // reduction.
                     if (src_symbol == sink_symbol &&
                             (LoopTools.isPrivate(src_symbol, l)
-                                    || (LoopTools.isPrivate(src_access, enclosing_loop))
-                                    || LoopTools.isReduction(src_symbol, l)
-                                    || (LoopTools.isReduction(src_access, enclosing_loop)))) {
+                                    || LoopTools.isReduction(src_symbol, l))) {
                         serialize = false;
                     } else {
                         serialize = true;

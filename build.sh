@@ -83,7 +83,7 @@ case "$1" in
   $0 jar
   echo "Generating a wrapper..."
   [ -d bin ] || mkdir bin
-  classpath="$PWD/lib/cetus.jar:$PWD/lib/rsyntaxtextarea.jar"
+  classpath="$PWD/lib/cetus.jar:$PWD/lib/antlr.jar:$PWD/lib/rsyntaxtextarea.jar"
   cat > bin/cetus << EOF
 #!/bin/sh
 # This file was generated automatically by build.sh.

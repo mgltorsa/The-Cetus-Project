@@ -501,9 +501,8 @@ public class ReductionTransform extends TransformPass {
                 continue;
             }
             // Allocates private copy of the array.
-
-            Declaration private_decl =allocatePrivateCopy(loop, e, op, private_span,i);
-
+            Declaration private_decl =
+                    allocatePrivateCopy(loop, parallel_region, e, op, private_span);
             if (private_decl == null) {
                 continue;
             }
@@ -601,9 +600,12 @@ public class ReductionTransform extends TransformPass {
             parallel_region.removeStatement(preg_marker);
             for (CetusAnnotation note :
                     loop.getAnnotations(CetusAnnotation.class)) {
-                // Keeps only reduction and lastprivate clauses
+                // Keeps reduction, lastprivate, and firstprivate. Dropping
+                // firstprivate left pointer parameters such as PolyBench tmp
+                // lastprivate and uninitialized, so tmp[i] segfaulted.
                 if (note.get("reduction") == null &&
-                    note.get("lastprivate") == null) {
+                    note.get("lastprivate") == null &&
+                    note.get("firstprivate") == null) {
                     note.detach();
                 }
                 // Moves private clause to the parallel region
@@ -624,8 +626,8 @@ public class ReductionTransform extends TransformPass {
      * resulting variable declaration.
      */
     @SuppressWarnings("unchecked")
-    private Declaration allocatePrivateCopy(ForLoop loop, Expression e,
-            String op, List<Expression> span, int num_expr) {
+    private Declaration allocatePrivateCopy(ForLoop loop, SymbolTable scope,
+            Expression e, String op, List<Expression> span) {
         Declaration ret = null;
         if (!op.equals("+") && !op.equals("*")) {
             return ret;
@@ -638,7 +640,15 @@ public class ReductionTransform extends TransformPass {
             // Discard the item since there exist "unallowed" data types.
             return ret;
         }
-        NameID private_name = SymbolTools.getNewName("reduce"+num_expr, loop);
+        // The private copies are inserted into the new parallel region, which
+        // is not yet an ancestor of the loop, so getNewName cannot see the
+        // copies already added for other reductions in this same region.
+        NameID private_name = new NameID("reduce");
+        int suffix = 0;
+        while (scope != null &&
+                SymbolTools.findSymbol(scope, private_name) != null) {
+            private_name = new NameID("reduce" + (suffix++));
+        }
         if (option_dynamic_copy) {
             Identifier alloc_name = null;
             alloc_name = SymbolTools.getOrphanID("malloc");

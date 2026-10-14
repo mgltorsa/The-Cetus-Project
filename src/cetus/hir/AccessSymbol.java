@@ -101,6 +101,11 @@ public class AccessSymbol extends PseudoSymbol implements Symbol {
         } else if (e instanceof BinaryExpression) {
             PrintTools.printlnStatus(1, "[WARNING] Symbol is obscure for", e);
             ret = parse(((BinaryExpression)e).getLHS());
+        } else if (e instanceof CompoundLiteral) {
+            /* (dcomplex){...}.real appears in NPB FT. Privatization asks for
+             * a symbol; crashing the pass drops the whole benchmark. */
+            PrintTools.printlnStatus(1, "[WARNING] Symbol is obscure for", e);
+            ret = null;
         ////////////////////////////////////////////////////////////////////////
         } else if (e instanceof UnaryExpression) {
             UnaryOperator op = ((UnaryExpression)e).getOperator();
@@ -120,6 +125,9 @@ public class AccessSymbol extends PseudoSymbol implements Symbol {
     * Returns the list of type specifiers.
     */
     public List getTypeSpecifiers() {
+        if (member == null) {
+            return new java.util.ArrayList();
+        }
         return member.getTypeSpecifiers();
     }
 
@@ -194,7 +202,11 @@ public class AccessSymbol extends PseudoSymbol implements Symbol {
     public boolean equals(Object o) {
         if (o instanceof AccessSymbol) {
             AccessSymbol other = (AccessSymbol)o;
-            return (base.equals(other.base) && member.equals(other.member));
+            boolean same_base = base == other.base ||
+                    (base != null && base.equals(other.base));
+            boolean same_member = member == other.member ||
+                    (member != null && member.equals(other.member));
+            return same_base && same_member;
         } else {
             return false;
         }
@@ -206,10 +218,14 @@ public class AccessSymbol extends PseudoSymbol implements Symbol {
     */
     @Override
     public int hashCode() {
-    	if (member == null) {
-    		return base.hashCode();
-    	}
-        return (base.hashCode() ^ member.hashCode());
+        int code = 0;
+        if (base != null) {
+            code ^= base.hashCode();
+        }
+        if (member != null) {
+            code ^= member.hashCode();
+        }
+        return code;
     }
 
     /**
