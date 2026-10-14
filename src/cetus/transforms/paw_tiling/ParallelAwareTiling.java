@@ -111,6 +111,8 @@ public class ParallelAwareTiling extends TransformPass {
      * iteration).
      */
     private final Map<ForLoop, String> coarsen = new IdentityHashMap<>();
+    /** The inner loop of each pair in {@link #coarsen}, to undo the interchange. */
+    private final Map<ForLoop, ForLoop> coarsenInner = new IdentityHashMap<>();
 
     public ParallelAwareTiling(Program program) {
         super(program);
@@ -311,6 +313,7 @@ public class ParallelAwareTiling extends TransformPass {
             stripParallelAnnotations(outer);
             if (!isSerialTiling() && !enclosed && outerParallel) {
                 coarsen.put(outer, parallelIndex);
+                coarsenInner.put(outer, inner);
             }
             changed = true;
         }
@@ -336,10 +339,21 @@ public class ParallelAwareTiling extends TransformPass {
         a.getStep().swapWith(b.getStep());
     }
 
-    /** Marks the loop of {@code nest} that iterates {@code index} parallel. */
-    private static void restoreInnerParallel(ForLoop nest, String index) {
+    /**
+     * Undoes the interchange of a nest whose coarsening did not happen and
+     * marks the loop that iterates {@code index} parallel again. Left as
+     * interchanged, the parallel loop would be the inner one and fork once
+     * per iteration of the outer loop.
+     */
+    private void restoreInnerParallel(ForLoop nest, String index) {
         if (nest.getParent() == null) {
             return; // replaced by its tiled version
+        }
+        ForLoop inner = coarsenInner.get(nest);
+        if (inner != null && inner.getParent() != null) {
+            swapHeaders(nest, inner);
+            PrintTools.printlnDebug("[paw] coarsening failed; interchange undone in "
+                    + LoopTools.getLoopName(nest));
         }
         for (ForLoop loop : ReuseOrderAnalyzer.nestLoops(nest)) {
             Expression indexVar = LoopTools.getIndexVariable(loop);
@@ -922,8 +936,18 @@ public class ParallelAwareTiling extends TransformPass {
         String nestTag = LoopTools.getLoopName(targetLoop);
         nestTag = nestTag == null ? ("nest" + System.identityHashCode(targetLoop))
                 : nestTag.replaceAll("[^A-Za-z0-9_]", "_");
-        BrowseResult browse = CandidateBrowser.browse(targetLoop, originalDvs,
-                browseCandidates, depth, symtab, nestTag);
+        boolean enumerate = coarsenIndex == null
+                && "enumerate".equals(Driver.getOptionValue("paw_browse"));
+        long searchStart = System.nanoTime();
+        BrowseResult browse = enumerate
+                ? CandidateBrowser.enumerate(targetLoop, originalDvs,
+                        browseCandidates, depth, symtab, nestTag)
+                : CandidateBrowser.browse(targetLoop, originalDvs,
+                        browseCandidates, depth, symtab, nestTag);
+        // One line per nest, read by the browse-order comparison.
+        PrintTools.println(String.format("[paw-search] nest=%s mode=%s candidates=%d tried=%d legal=%d chosen=%s micros=%d",
+                nestTag, enumerate ? "enumerate" : "reuse", browseCandidates.size(), browse.tried,
+                browse.legal, browse.symbolicSizes.keySet(), (System.nanoTime() - searchStart) / 1000), 0);
         if (browse.nest == null) {
             PrintTools.printlnDebug("[paw] no legal tiled version; nest untouched");
             return null;

@@ -366,6 +366,15 @@ public class Driver {
                         + "      =1 enable");
 
         options.add(options.TRANSFORM,
+                "paw_browse",
+                "reuse",
+                "reuse",
+                "M",
+                "How PAW searches the tiled versions of a nest\n"
+                        + "      =reuse     browse loops in decreasing temporal reuse, keep each legal step (default)\n"
+                        + "      =enumerate build every version (Pan et al.) and keep the legal one of lowest structural cost");
+
+        options.add(options.TRANSFORM,
                 SerialTiling.PASS_NAME,
                 null,
                 null,
@@ -932,7 +941,14 @@ public class Driver {
          * 
          */
         if (getOptionValue("loop_interchange") != null) {
-            TransformPass.run(new LoopInterchange(program));
+            // As in ParallelAwareTiling: LoopInterchange throws on some nests
+            // (seidel-2d: IndexOutOfBounds in ReusabilityAnalysis); the
+            // program is then left in its original order.
+            try {
+                TransformPass.run(new LoopInterchange(program));
+            } catch (Exception e) {
+                PrintTools.println("[LoopInterchange] failed, loops left in their order: " + e, 0);
+            }
         }
 
         if (getOptionValue("parallelize-loops") != null && !getOptionValue("parallelize-loops").equals("0")) {

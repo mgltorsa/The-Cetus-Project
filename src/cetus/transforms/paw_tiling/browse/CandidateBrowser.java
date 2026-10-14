@@ -15,6 +15,7 @@ import cetus.hir.Loop;
 import cetus.hir.PrintTools;
 import cetus.hir.SymbolTable;
 import cetus.transforms.paw_tiling.TiledLoop;
+import cetus.transforms.paw_tiling.analysis.ReuseOrderAnalyzer;
 import cetus.transforms.paw_tiling.Tiler;
 import cetus.transforms.paw_tiling.legality.DirectionVectorLemmas;
 import cetus.utils.VariableDeclarationUtils;
@@ -44,7 +45,14 @@ public final class CandidateBrowser {
         public Map<String, IDExpression> symbolicSizes = new LinkedHashMap<>();
         /** Candidates discarded as illegal (for reporting). */
         public int discarded = 0;
+        /** Tiled versions built and tested for legality. */
+        public int tried = 0;
+        /** Of those, the legal ones. */
+        public int legal = 0;
     }
+
+    /** Upper bound on the versions {@link #enumerate} builds for one nest. */
+    public static final int MAX_ENUMERATED = 2000;
 
     private CandidateBrowser() {
     }
@@ -100,6 +108,7 @@ public final class CandidateBrowser {
                     currentDvs);
             List<Loop> vOrder = loopOrder(v);
             List<DependenceVector> vDvs = v.getDependenceVectors();
+            result.tried++;
 
             if (currentDvs == null || currentDvs.isEmpty()) {
                 PrintTools.printlnDebug("[paw-browse] empty DV set while tiling "
@@ -122,6 +131,7 @@ public final class CandidateBrowser {
                     + " dvs=" + DirectionVectorLemmas.formatVectors(vDvs, vOrder));
             x = v;
             currentDvs = vDvs;
+            result.legal++;
             tiledSomething = true;
             result.tiledOriginalLoops.add(candidate);
             result.symbolicSizes.put(indexName, sizeId);
@@ -133,6 +143,123 @@ public final class CandidateBrowser {
             result.order = loopOrder(x);
         }
         return result;
+    }
+
+    /**
+     * The search of Pan et al., for comparison with {@link #browse}: every
+     * tiled version is built, one for each ordered choice of up to
+     * {@code depth} loops to strip-mine (each tile loop hoisted outermost,
+     * as in the browse), and the legal one with the lowest structural cost
+     * is kept. The cost does not look at a numeric tile size and is ordered:
+     * the outermost parallel loop as far out as possible, then the most
+     * temporal reuse over the strip-mined loops (the reuse scores of
+     * {@link ReuseOrderAnalyzer}), then the fewest tile loops.
+     */
+    public static BrowseResult enumerate(ForLoop nest,
+            List<DependenceVector> originalDvs, List<ForLoop> candidates,
+            int depth, SymbolTable symtab, String nestTag) throws Exception {
+        BrowseResult result = new BrowseResult();
+        int maxTiled = depth <= 0 ? candidates.size() : Math.min(depth, candidates.size());
+        Map<String, IDExpression> ids = new LinkedHashMap<>();
+        Map<String, Double> reuse = new LinkedHashMap<>();
+        for (ForLoop candidate : candidates) {
+            Expression indexVar = LoopTools.getIndexVariable(candidate);
+            if (indexVar == null) {
+                continue;
+            }
+            String name = indexVar.toString();
+            String sizeName = Tiler.IN_TILE_PREFIX + nestTag + "_" + name;
+            IDExpression sizeId = VariableDeclarationUtils.getIdentifier(symtab, sizeName);
+            if (sizeId == null) {
+                sizeId = VariableDeclarationUtils.declareVariable(symtab, sizeName);
+            }
+            ids.put(name, sizeId);
+            reuse.put(name, ReuseOrderAnalyzer.numericScore(candidate, nest));
+        }
+        List<List<String>> sequences = new ArrayList<>();
+        sequencesOf(new ArrayList<>(ids.keySet()), maxTiled, new ArrayList<String>(), sequences);
+
+        double[] bestKey = null;
+        for (List<String> seq : sequences) {
+            if (result.tried >= MAX_ENUMERATED) {
+                break;
+            }
+            TiledLoop x = new TiledLoop(nest.clone(false), originalDvs);
+            List<DependenceVector> dvs = x.getDependenceVectors();
+            boolean built = true;
+            for (String name : seq) {
+                int pos = positionOf(x, name);
+                if (pos < 0) {
+                    built = false;
+                    break;
+                }
+                x = Tiler.tile(symtab, x.clone(false), ids.get(name), pos, dvs);
+                dvs = x.getDependenceVectors();
+            }
+            if (!built) {
+                continue;
+            }
+            result.tried++;
+            List<Loop> order = loopOrder(x);
+            if (!DirectionVectorLemmas.isLegal(dvs, order)) {
+                result.discarded++;
+                continue;
+            }
+            result.legal++;
+            Loop parallel = DirectionVectorLemmas.outermostParallelLoop(dvs, order);
+            double parallelPos = parallel == null ? order.size() : order.indexOf(parallel);
+            double score = 0;
+            for (String name : seq) {
+                score += reuse.get(name);
+            }
+            double[] key = {parallelPos, -score, seq.size()};
+            if (bestKey == null || compareKeys(key, bestKey) < 0) {
+                bestKey = key;
+                result.nest = x;
+                result.dvs = dvs;
+                result.order = order;
+                result.tiledOriginalLoops = new ArrayList<>();
+                result.symbolicSizes = new LinkedHashMap<>();
+                for (String name : seq) {
+                    for (ForLoop candidate : candidates) {
+                        Expression indexVar = LoopTools.getIndexVariable(candidate);
+                        if (indexVar != null && indexVar.toString().equals(name)) {
+                            result.tiledOriginalLoops.add(candidate);
+                        }
+                    }
+                    result.symbolicSizes.put(name, ids.get(name));
+                }
+            }
+        }
+        return result;
+    }
+
+    private static int compareKeys(double[] a, double[] b) {
+        for (int i = 0; i < a.length; i++) {
+            int c = Double.compare(a[i], b[i]);
+            if (c != 0) {
+                return c;
+            }
+        }
+        return 0;
+    }
+
+    /** Every ordered selection of 1..max distinct names. */
+    private static void sequencesOf(List<String> names, int max, List<String> prefix,
+            List<List<String>> out) {
+        if (!prefix.isEmpty()) {
+            out.add(new ArrayList<>(prefix));
+        }
+        if (prefix.size() == max) {
+            return;
+        }
+        for (String name : names) {
+            if (!prefix.contains(name)) {
+                prefix.add(name);
+                sequencesOf(names, max, prefix, out);
+                prefix.remove(prefix.size() - 1);
+            }
+        }
     }
 
     /** DFS loop order (outermost to innermost). */
