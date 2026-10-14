@@ -249,6 +249,12 @@ public class ProfitableOMP extends CodeGenPass {
         while (iter.hasNext()) {
             Statement stmt = iter.next();
             if (stmt.containsAnnotation(OmpAnnotation.class, "parallel")) {
+                // A PAW tile loop hands whole tiles to threads. Its trip
+                // count is small by construction, so the workload model
+                // would serialize exactly the loop the tiling pass chose.
+                if (isTileLoop(stmt)) {
+                    continue;
+                }
                 if (option == MODEL_BASED) {
                     addModelRuntime(stmt);
                 } else if (option == PROFILE_BASED) {
@@ -263,6 +269,16 @@ public class ProfitableOMP extends CodeGenPass {
             profile_numevents = parcount[0];
             finalizeProfileRuntime();
         }
+    }
+
+    /** True for a cross-tile loop created by the PAW tiling pass. */
+    private static boolean isTileLoop(Statement stmt) {
+        if (!(stmt instanceof ForLoop)) {
+            return false;
+        }
+        Symbol index = LoopTools.getLoopIndexSymbol((ForLoop)stmt);
+        return index != null && index.getSymbolName() != null
+                && index.getSymbolName().endsWith("_cetus_cross");
     }
 
     // Codes for model-based approach

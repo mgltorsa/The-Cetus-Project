@@ -14,6 +14,7 @@ import cetus.transforms.*;
 import cetus.transforms.paw_tiling.ParallelAwareTiling;
 import cetus.transforms.paw_tiling.TilingParams;
 import cetus.transforms.paw_tiling.instrumentation.PAPIInstrumentation;
+import cetus.transforms.serial_tiling.SerialTiling;
 
 import java.io.*;
 import java.util.Arrays;
@@ -365,6 +366,15 @@ public class Driver {
                         + "      =1 enable");
 
         options.add(options.TRANSFORM,
+                SerialTiling.PASS_NAME,
+                null,
+                null,
+                "N",
+                "Tiles perfect loop nests as sequential code, with no knowledge of\n"
+                        + "parallel loops, threads or OpenMP clauses (the baseline of -paw_tiling)\n"
+                        + "      =1 enable");
+
+        options.add(options.TRANSFORM,
                 TilingParams.CORES_PARAM_NAME,
                 null,
                 "" + TilingParams.DEFAULT_PROCESSORS,
@@ -391,6 +401,13 @@ public class Driver {
                 "" + TilingParams.TILING_PROFITABILITY_PARAM_DESCR,
                 "N",
                 TilingParams.DEFAULT_TILING_PROFITABILITY);
+
+        options.add(options.TRANSFORM,
+                TilingParams.REUSE_CHECK_PARAM_NAME,
+                null,
+                "" + TilingParams.REUSE_CHECK_PARAM_DESCR,
+                "N",
+                TilingParams.DEFAULT_REUSE_CHECK);
 
         options.add(options.TRANSFORM,
                 TilingParams.SELECTION_ALGORITHM_PARAM_NAME,
@@ -424,6 +441,13 @@ public class Driver {
                 PAPIInstrumentation.DEFAULT_EVENTS,
                 "S",
                 PAPIInstrumentation.EVENTS_PARAM_DESCR);
+
+        options.add(options.TRANSFORM,
+                PAPIInstrumentation.FUNCTIONS_PARAM_NAME,
+                null,
+                "",
+                "S",
+                PAPIInstrumentation.FUNCTIONS_PARAM_DESCR);
 
     }
 
@@ -918,6 +942,10 @@ public class Driver {
         // OmpGen
         if (getOptionValue(ParallelAwareTiling.PASS_NAME) != null) {
             TransformPass.run(new ParallelAwareTiling(program));
+        }
+
+        if (SerialTiling.isRequested()) {
+            TransformPass.run(new SerialTiling(program));
         }
 
         if (getOptionValue("ompGen") != null && !getOptionValue("ompGen").equals("0")) {

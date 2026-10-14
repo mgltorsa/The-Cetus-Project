@@ -4,9 +4,11 @@ import cetus.exec.Driver;
 import cetus.hir.*;
 
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -121,6 +123,7 @@ public class ompGen extends CodeGenPass {
 
         omp_annot.put("for", "true");
         removeAutomaticPrivateVariables(loop, omp_annot);
+        dropLoopVariantArrayReductions(loop, omp_annot);
 
         loop.annotateBefore(omp_annot);
 
@@ -164,6 +167,56 @@ public class ompGen extends CodeGenPass {
                     note.remove(key);
                 }
             }
+        }
+    }
+
+    /**
+     * OpenMP element reductions require a loop-invariant subscript.
+     * {@code reduction(+:a[m])} when {@code m} is assigned in the loop is not
+     * that form; gcc then indexes the private reduction copy with an
+     * uninitialized subscript and smashes the stack. The array reduction was
+     * already rewritten by ReductionTransform, so the clause is dropped.
+     */
+    @SuppressWarnings("unchecked")
+    private void dropLoopVariantArrayReductions(Statement stmt,
+                                                OmpAnnotation note) {
+        Object value = note.get("reduction");
+        if (!(value instanceof Map)) {
+            return;
+        }
+        Map<String, Set<Expression>> reduction =
+                (Map<String, Set<Expression>>)value;
+        Set<Symbol> defined = DataFlowTools.getDefSymbol(stmt);
+        for (Set<Expression> items : reduction.values()) {
+            if (items == null) {
+                continue;
+            }
+            Iterator<Expression> iter = items.iterator();
+            while (iter.hasNext()) {
+                Expression item = iter.next();
+                if (!(item instanceof ArrayAccess)) {
+                    continue;
+                }
+                Set<Symbol> indexSymbols = new HashSet<Symbol>();
+                for (Expression index : ((ArrayAccess)item).getIndices()) {
+                    indexSymbols.addAll(SymbolTools.getAccessedSymbols(index));
+                }
+                indexSymbols.retainAll(defined);
+                if (!indexSymbols.isEmpty()) {
+                    iter.remove();
+                }
+            }
+        }
+        Iterator<Map.Entry<String, Set<Expression>>> ops =
+                reduction.entrySet().iterator();
+        while (ops.hasNext()) {
+            Set<Expression> items = ops.next().getValue();
+            if (items == null || items.isEmpty()) {
+                ops.remove();
+            }
+        }
+        if (reduction.isEmpty()) {
+            note.remove("reduction");
         }
     }
 

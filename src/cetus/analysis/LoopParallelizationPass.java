@@ -271,11 +271,15 @@ public class LoopParallelizationPass extends AnalysisPass {
                     // Alias relationship may incur different src and sink,
                     // which is not handled in both array privatization and
                     // reduction.
+                    // Only a privatized or reduction *array symbol* removes a
+                    // carried dependence. An earlier revision also accepted any
+                    // access whose first subscript was a private scalar (for
+                    // example the loop index itself). That hid real
+                    // dependences: cholesky, lu, trmm, symm and the NPB
+                    // back-substitutions were emitted as parallel loops.
                     if (src_symbol == sink_symbol &&
                             (LoopTools.isPrivate(src_symbol, l)
-                                    || (LoopTools.isPrivate(src_access, enclosing_loop))
-                                    || LoopTools.isReduction(src_symbol, l)
-                                    || (LoopTools.isReduction(src_access, enclosing_loop)))) {
+                                    || LoopTools.isReduction(src_symbol, l))) {
                         serialize = false;
                     } else {
                         serialize = true;
@@ -301,10 +305,26 @@ public class LoopParallelizationPass extends AnalysisPass {
                             PrintTools.collectionToString(array_deps, ", ") +
                             "}");
                 }
+                if (is_parallel && (syntacticCarriedDependence(l) ||
+                        invariantSharedWrite(l))) {
+                    is_parallel = false;
+                    addReport(l, "contains a subscript self-dependence on " +
+                            LoopTools.getLoopIndexSymbol(l));
+                }
+                if (is_parallel) {
+                    // Arrays partitioned by this loop's index are shared, not
+                    // private; drop them before the pointer check below.
+                    shareIndexedArrays(l);
+                }
+                if (is_parallel && privatizesPointerParameter(l)) {
+                    is_parallel = false;
+                    addReport(l, "privatizes an array that is a pointer parameter");
+                }
                 if (is_parallel) {
                     addReport(l, "is parallel");
 
                     if (nested_parallelism || !has_scheduled_outer_loop) {
+                        shareIndexedArrays(l);
                         addCetusAnnotation(l, true);
                         addCetusNumThreadsAnnotation(l);
                         addReport(l, "is scheduled for parallelization");
@@ -317,6 +337,324 @@ public class LoopParallelizationPass extends AnalysisPass {
             }
         }
 
+    }
+
+    /**
+     * An array parameter is a pointer. {@code private(a)} or
+     * {@code firstprivate(a)} then copies the pointer, every thread still
+     * writes the caller's array, and the loop races (PolyBench doitgen's
+     * {@code sum}). Such a loop is kept serial; its inner loops are still
+     * candidates.
+     */
+    public static boolean privatizesPointerParameter(Loop loop) {
+        Annotatable annotated = (Annotatable) loop;
+        for (String key : new String[] {"private", "firstprivate", "lastprivate"}) {
+            CetusAnnotation note =
+                    annotated.getAnnotation(CetusAnnotation.class, key);
+            if (note == null) {
+                continue;
+            }
+            Set<Symbol> symbols = note.get(key);
+            if (symbols == null) {
+                continue;
+            }
+            for (Symbol symbol : symbols) {
+                if (SymbolTools.isFormal(symbol)
+                        && (SymbolTools.isArray(symbol)
+                                || SymbolTools.isPointer(symbol))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A global or parameter array written only at subscripts that use this
+     * loop index is partitioned by the loop. Copying the whole array into a
+     * private/firstprivate/lastprivate temporary keeps every iteration's
+     * update except the lastprivate copy-out, which is what made NPB UA
+     * {@code move} drop five of the six face updates.
+     */
+    public static void shareIndexedArrays(Loop loop) {
+        Symbol index = LoopTools.getLoopIndexSymbol(loop);
+        if (index == null) {
+            return;
+        }
+        Annotatable annotated = (Annotatable) loop;
+        for (String key : new String[] {"private", "firstprivate", "lastprivate"}) {
+            CetusAnnotation note =
+                    annotated.getAnnotation(CetusAnnotation.class, key);
+            if (note == null) {
+                continue;
+            }
+            Set<Symbol> symbols = note.get(key);
+            if (symbols == null) {
+                continue;
+            }
+            for (Symbol symbol : new LinkedHashSet<Symbol>(symbols)) {
+                if (writesOnlyThroughLoopIndex(loop, symbol, index)) {
+                    symbols.remove(symbol);
+                }
+            }
+            if (symbols.isEmpty()) {
+                note.detach();
+            }
+        }
+    }
+
+    private static boolean writesOnlyThroughLoopIndex(Loop loop, Symbol symbol,
+            Symbol index) {
+        boolean sawWrite = false;
+        DFIterator<AssignmentExpression> iter = new DFIterator<AssignmentExpression>(
+                (Traversable) loop, AssignmentExpression.class);
+        while (iter.hasNext()) {
+            Expression lhs = iter.next().getLHS();
+            if (SymbolTools.getSymbolOf(lhs) != symbol) {
+                continue;
+            }
+            sawWrite = true;
+            if (!accessUses(lhs, index)) {
+                return false;
+            }
+        }
+        return sawWrite;
+    }
+
+    /**
+     * Dependence analysis misses some loop-carried array updates, including
+     * the BT/SP back-substitution {@code a[i] = a[i] - c * a[i+1]}. A write
+     * and a read of the same array whose subscripts differ on this loop's
+     * index is enough to keep the loop serial.
+     */
+    private static boolean syntacticCarriedDependence(Loop loop) {
+        Symbol index = LoopTools.getLoopIndexSymbol(loop);
+        if (index == null) {
+            return false;
+        }
+        Set<Symbol> aliases = indexOffsetAliases(loop, index);
+        List<ArrayAccess> accesses = new ArrayList<ArrayAccess>();
+        DFIterator<ArrayAccess> iter =
+                new DFIterator<ArrayAccess>((Traversable) loop, ArrayAccess.class);
+        while (iter.hasNext()) {
+            accesses.add(iter.next());
+        }
+        for (ArrayAccess write : accesses) {
+            if (!(write.getParent() instanceof AssignmentExpression)) {
+                continue;
+            }
+            if (((AssignmentExpression) write.getParent()).getLHS() != write) {
+                continue;
+            }
+            Symbol array = SymbolTools.getSymbolOf(baseArray(write));
+            if (array == null || !accessUses(write, index)) {
+                continue;
+            }
+            List<Expression> written = flattenIndices(write);
+            for (ArrayAccess read : accesses) {
+                if (read == write || IRTools.isAncestorOf(write, read)) {
+                    continue;
+                }
+                if (SymbolTools.getSymbolOf(baseArray(read)) != array) {
+                    continue;
+                }
+                List<Expression> readIdx = flattenIndices(read);
+                int dims = Math.min(written.size(), readIdx.size());
+                for (int d = 0; d < dims; d++) {
+                    if (written.get(d).toString().equals(readIdx.get(d).toString())) {
+                        continue;
+                    }
+                    if (usesIndexOrAlias(written.get(d), index, aliases) &&
+                            usesIndexOrAlias(readIdx.get(d), index, aliases)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static Expression baseArray(ArrayAccess access) {
+        Expression name = access;
+        while (name instanceof ArrayAccess) {
+            name = ((ArrayAccess) name).getArrayName();
+        }
+        return name;
+    }
+
+    private static List<Expression> flattenIndices(ArrayAccess access) {
+        List<Expression> indices = new ArrayList<Expression>();
+        Expression cursor = access;
+        while (cursor instanceof ArrayAccess) {
+            ArrayAccess array = (ArrayAccess) cursor;
+            List<Expression> level = new ArrayList<Expression>();
+            for (int i = 0; i < array.getNumIndices(); i++) {
+                level.add(array.getIndex(i));
+            }
+            indices.addAll(0, level);
+            cursor = array.getArrayName();
+        }
+        return indices;
+    }
+
+    /**
+     * Every iteration writes the same location when the left-hand side does
+     * not use the loop index. That is a race unless the location is private
+     * or a reduction. The BT back-substitution inner loop is this pattern:
+     * {@code rhs[m] = rhs[m] - lhs[n][m] * rhs_next[n]}. Nested loops count
+     * too: SP {@code x_solve} writes the shared vectors {@code cv[i]} and
+     * {@code rhon[i]} from a loop on {@code j}.
+     */
+    private static boolean invariantSharedWrite(Loop loop) {
+        return sharedWriteMissesIndex(loop, true);
+    }
+
+    /**
+     * Loop interchange can leave {@code cetus parallel} on a loop whose
+     * index no longer partitions the writes (NPB UA {@code remap} accumulates
+     * into {@code y[jj][iz][ii]} from {@code for (kk)}). Scalar reductions
+     * stay parallel. An array update that ignores the parallel index is a
+     * race even when the array is marked as a reduction. Tile loops
+     * ({@code *_cetus_cross}) are left alone: their writes use the in-strip
+     * index, which the parallelism lemma already checked.
+     */
+    public static void revokeIllegalParallel(Loop loop) {
+        if (!(loop instanceof Annotatable)) {
+            return;
+        }
+        Symbol index = LoopTools.getLoopIndexSymbol(loop);
+        if (index != null && index.getSymbolName() != null
+                && index.getSymbolName().endsWith("_cetus_cross")) {
+            return;
+        }
+        Annotatable annotated = (Annotatable) loop;
+        if (!annotated.containsAnnotation(CetusAnnotation.class, "parallel")) {
+            return;
+        }
+        boolean carried = syntacticCarriedDependence(loop);
+        boolean missesIndex = sharedWriteMissesIndex(loop, false);
+        boolean pointerParam = privatizesPointerParameter(loop);
+        if (!carried && !missesIndex && !pointerParam) {
+            return;
+        }
+        PrintTools.printlnDebug("[revoke-parallel] " + LoopTools.getLoopName((Statement) loop)
+                + " carried=" + carried + " missesIndex=" + missesIndex
+                + " pointerParam=" + pointerParam);
+        List<CetusAnnotation> notes =
+                annotated.getAnnotations(CetusAnnotation.class);
+        if (notes == null) {
+            return;
+        }
+        for (CetusAnnotation note : new ArrayList<CetusAnnotation>(notes)) {
+            if (note.get("parallel") == null) {
+                continue;
+            }
+            note.remove("parallel");
+            if (note.keySet().isEmpty()) {
+                note.detach();
+            }
+        }
+    }
+
+    /**
+     * @param exemptArrayReductions initial parallelization ignores array
+     *        reductions here. The post-interchange revoke must not, because
+     *        those clauses are dropped later when the subscript is defined
+     *        inside the loop.
+     */
+    private static boolean sharedWriteMissesIndex(Loop loop,
+            boolean exemptArrayReductions) {
+        Symbol index = LoopTools.getLoopIndexSymbol(loop);
+        if (index == null) {
+            return false;
+        }
+        DFIterator<AssignmentExpression> iter = new DFIterator<AssignmentExpression>(
+                (Traversable) loop, AssignmentExpression.class);
+        while (iter.hasNext()) {
+            AssignmentExpression assign = iter.next();
+            Expression lhs = assign.getLHS();
+            if (accessUses(lhs, index)) {
+                continue;
+            }
+            Symbol symbol = SymbolTools.getSymbolOf(lhs);
+            if (symbol == null || LoopTools.isPrivate(symbol, loop)) {
+                continue;
+            }
+            if (LoopTools.isReduction(symbol, loop)
+                    && (exemptArrayReductions || !(lhs instanceof ArrayAccess))) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Names assigned from the loop index plus or minus a constant, such as
+     * {@code i1 = i + 1} in the SP Thomas algorithm.
+     */
+    private static Set<Symbol> indexOffsetAliases(Loop loop, Symbol index) {
+        Set<Symbol> aliases = new LinkedHashSet<Symbol>();
+        DFIterator<AssignmentExpression> iter = new DFIterator<AssignmentExpression>(
+                (Traversable) loop, AssignmentExpression.class);
+        while (iter.hasNext()) {
+            AssignmentExpression assign = iter.next();
+            if (!(assign.getLHS() instanceof Identifier)) {
+                continue;
+            }
+            if (!isIndexOffset(assign.getRHS(), index)) {
+                continue;
+            }
+            Symbol symbol = ((Identifier) assign.getLHS()).getSymbol();
+            if (symbol != null) {
+                aliases.add(symbol);
+            }
+        }
+        return aliases;
+    }
+
+    private static boolean isIndexOffset(Expression rhs, Symbol index) {
+        if (rhs instanceof Identifier) {
+            return index.equals(SymbolTools.getSymbolOf(rhs));
+        }
+        if (!(rhs instanceof BinaryExpression)) {
+            return false;
+        }
+        BinaryExpression binary = (BinaryExpression) rhs;
+        String operator = binary.getOperator().toString();
+        if (!operator.equals("+") && !operator.equals("-")) {
+            return false;
+        }
+        return isIndexOrConstant(binary.getLHS(), index) &&
+                isIndexOrConstant(binary.getRHS(), index) &&
+                (accessUses(binary.getLHS(), index) ||
+                        accessUses(binary.getRHS(), index));
+    }
+
+    private static boolean isIndexOrConstant(Expression expr, Symbol index) {
+        Set<Symbol> symbols = SymbolTools.getAccessedSymbols(expr);
+        if (symbols.isEmpty()) {
+            return true;
+        }
+        return symbols.size() == 1 && symbols.contains(index);
+    }
+
+    private static boolean usesIndexOrAlias(Expression expr, Symbol index,
+            Set<Symbol> aliases) {
+        Set<Symbol> used = SymbolTools.getAccessedSymbols(expr);
+        if (used.contains(index)) {
+            return true;
+        }
+        for (Symbol symbol : used) {
+            if (aliases.contains(symbol)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean accessUses(Traversable node, Symbol index) {
+        return SymbolTools.getAccessedSymbols(node).contains(index);
     }
 
     /**

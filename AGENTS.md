@@ -55,6 +55,39 @@ fallback regions via `c_paw_measure` / omp / outermost `kernel_*` loops;
 empty-region case runs PAPI around `main` so baselines still get counters).
 `./run-paw-tests.sh` should stay green after PAPI changes.
 
+## Correctness rules added 2026-10-12 (do not relax without a failing-case test)
+
+Found by running every PolyBench kernel and NPB benchmark against its serial
+output (`tiling-experiments-2026/ai-agents/docs/correctness.md` has the cases).
+
+- `LoopParallelizationPass`: a carried array dependence is cleared only when the
+  array *symbol* is private or a reduction. The old extra test on the first
+  subscript (`isPrivate(src_access, ...)`) made cholesky, lu, trmm parallel.
+- `LoopParallelizationPass.privatizesPointerParameter`: a loop that would put an
+  array parameter in `private`/`firstprivate` stays serial (the clause copies
+  the pointer, not the array).
+- `ParallelAwareTiling.isValidForTiling`: every loop of the nest must pass
+  `LoopTools.checkDataDependenceEligibility` and have no unresolved scalar
+  dependence (`collectScalarDependences`). Direction vectors only describe
+  array accesses of analysable loops.
+- `ParallelAwareTiling.processLoop`: a loop marked `cetus for` (work-sharing
+  loop of a ReductionTransform region) keeps that mark on the outermost tile
+  loop, or the nest is left untiled.
+- `BalancedTileCalculator`: symbolic size is `I < P ? 1 : I/(ceil(I/(P*T))*P)`.
+- `ProfitableOMP` skips `*_cetus_cross` loops; the tiling pass no longer forces
+  `-profitable-omp=0`.
+- `PAPIInstrumentation`: regions are the outermost loops of `-papi-functions`
+  or `kernel_*` procedures; one free-running event set per thread; regions
+  accumulate and print once at exit. `resources/paw_tests/papi_stub/papi.h`
+  models the same API (`PAPI_read`).
+
+Regression check after any change to these passes:
+
+```bash
+./build.sh bin
+python3 /mnt/d/workspace/cetus/tiling-experiments-2026/ai-agents/scripts/run_evidence.py check-local
+```
+
 ## Build, run, test
 
 ```bash
